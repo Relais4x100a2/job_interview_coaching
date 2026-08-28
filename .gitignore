@@ -10,3 +10,6 @@ static/audio/*
 .pytest_cache/
 .ruff_cache/
 *.mp3
+instance/*
+!instance/.gitkeep
+*.db

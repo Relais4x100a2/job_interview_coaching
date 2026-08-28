@@ -9,9 +9,11 @@ services:
       FLASK_DEBUG: "1"
       UV_NO_DEV: "1"
       UV_LINK_MODE: copy
+      STORAGE_TYPE: sqlite
     volumes:
       - .:/app
       - venv:/app/.venv
+      - ./instance:/app/instance
     restart: unless-stopped
 
 volumes:

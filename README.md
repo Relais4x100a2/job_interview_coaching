@@ -40,11 +40,24 @@ uv run flask --app app run --debug
 
 ```
 app.py                  → Routes Flask
-services/storage.py     → InMemoryStorage (pattern Repository)
+services/storage.py     → SQLiteStorage / InMemoryStorage (pattern Repository)
 services/ai_service.py  → LLM, STT Whisper, TTS OpenAI
 templates/index.html    → Interface SPA
 static/js/app.js        → Enregistrement audio et appels API
+instance/app.db         → Base SQLite (persistée, gitignored)
 ```
+
+## Persistance des données
+
+| Donnée | Emplacement | Persiste au restart ? |
+|---|---|---|
+| Sessions, questions, feedbacks | `instance/app.db` (SQLite) | Oui |
+| Fichiers audio (.webm, .mp3) | `static/audio/` | Oui |
+| Clés API | `.env` (local, gitignored) | Oui |
+
+Le schéma hybride (colonnes SQL + JSON) permet d'évoluer les champs sans migration Alembic.
+
+Avec Docker, le volume `./instance:/app/instance` garantit la persistance de la base sur l'hôte.
 
 ## Variables d'environnement
 
@@ -56,6 +69,8 @@ static/js/app.js        → Enregistrement audio et appels API
 | `OPENAI_MODEL` | Modèle OpenAI (défaut : `gpt-4o-mini`) |
 | `TTS_VOICE` | Voix TTS (défaut : `alloy`) |
 | `FLASK_DEBUG` | Mode debug Flask (`1` pour activer) |
+| `STORAGE_TYPE` | `sqlite` (défaut) ou `memory` |
+| `DATABASE_PATH` | Chemin BDD SQLite (défaut : `instance/app.db`) |
 
 > **Note :** Whisper (STT) et TTS nécessitent toujours une clé `OPENAI_API_KEY`, même si le LLM passe par OpenRouter.
 

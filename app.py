@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import BadRequest, NotFound
 
 from services import ai_service
-from services.storage import InMemoryStorage
+from services.storage import create_storage
 
 load_dotenv()
 
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = BASE_DIR / "static" / "audio"
+INSTANCE_DIR = BASE_DIR / "instance"
 
 EXT_MAP = {
     "audio/webm": "webm",
@@ -31,7 +32,7 @@ EXT_MAP = {
     "audio/ogg": "ogg",
 }
 
-storage = InMemoryStorage()
+storage = create_storage(BASE_DIR)
 
 
 def create_app() -> Flask:
@@ -42,6 +43,7 @@ def create_app() -> Flask:
     """
     app = Flask(__name__)
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
 
     @app.get("/")
     def index() -> str:
