@@ -1,0 +1,17 @@
+[project]
+name = "job-interview"
+version = "0.1.0"
+description = "Application Flask d'entraînement aux entretiens d'embauche"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.1.3",
+    "litellm>=1.98.0",
+    "openai>=2.54.0",
+    "python-dotenv>=1.2.3",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.5",
+]
