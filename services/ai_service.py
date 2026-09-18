@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -268,6 +269,68 @@ def analyze_answer(
         "analysis_form": str(data["analysis_form"]),
         "ideal_answer_text": str(data["ideal_answer_text"]),
     }
+
+
+def analyze_visual(
+    frames: list[bytes],
+    question: str,
+    language: str,
+) -> str:
+    """Analyse les frames vidéo via GPT-4o vision pour le feedback non-verbal.
+
+    Args:
+        frames: Liste d'images JPEG en bytes.
+        question: Question d'entretien posée.
+        language: Code langue ('fr' ou 'en').
+
+    Returns:
+        Texte d'analyse du non-verbal.
+
+    Raises:
+        ValueError: Si aucune frame n'est fournie.
+    """
+    if not frames:
+        raise ValueError("Au moins une frame est requise pour l'analyse visuelle.")
+
+    lang_label = LANGUAGE_LABELS.get(language, language)
+
+    system_prompt = (
+        "Tu es un coach expert en communication non-verbale pour les entretiens "
+        "d'embauche. On te fournit des captures d'écran extraites de la vidéo d'un "
+        "candidat répondant à une question d'entretien. "
+        "Analyse : expressions faciales, contact visuel (regarde-t-il la caméra ?), "
+        "posture, gestes, tics corporels, niveau de confiance perçu. "
+        "Donne des conseils concrets d'amélioration. "
+        f"Rédige ton analyse en {lang_label}."
+    )
+
+    image_parts = []
+    for frame in frames:
+        b64 = base64.b64encode(frame).decode("utf-8")
+        image_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
+        })
+
+    user_content = [
+        {"type": "text", "text": f"Question posée au candidat : {question}"},
+        *image_parts,
+    ]
+
+    client = _get_openai_client()
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        max_tokens=1000,
+        temperature=0.7,
+    )
+    content = response.choices[0].message.content
+    if not content:
+        raise RuntimeError("Réponse GPT-4o vision vide.")
+    return content.strip()
 
 
 def synthesize_speech(text: str) -> bytes:
