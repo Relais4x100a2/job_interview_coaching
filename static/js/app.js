@@ -146,12 +146,14 @@ function stopMicrophone() {
 function showRecordingMode() {
     document.getElementById("recording-mode").classList.remove("hidden");
     document.getElementById("consultation-mode").classList.add("hidden");
+    document.getElementById("mode-selector").classList.remove("hidden");
     state.viewMode = "recording";
 }
 
 function showConsultationMode(feedback) {
     document.getElementById("recording-mode").classList.add("hidden");
     document.getElementById("consultation-mode").classList.remove("hidden");
+    document.getElementById("mode-selector").classList.add("hidden");
     displayFeedback(feedback);
     state.viewMode = "consultation";
 }
