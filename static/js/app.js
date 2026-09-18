@@ -358,6 +358,7 @@ function resetRecordingView() {
     document.getElementById("btn-record").classList.add("bg-red-500");
     document.getElementById("recording-timer").classList.add("hidden");
     document.getElementById("user-audio").src = "";
+    document.getElementById("user-video").src = "";
     document.getElementById("ideal-audio").src = "";
     stopTimer();
     stopFrameCapture();
@@ -443,6 +444,16 @@ async function toggleRecording() {
         document.getElementById("btn-record").classList.replace("bg-red-500", "bg-gray-500");
         document.getElementById("recording-timer").classList.remove("hidden");
     } catch (err) {
+        if (activeStream) {
+            activeStream.getTracks().forEach((track) => track.stop());
+            activeStream = null;
+        }
+        stopFrameCapture();
+        if (state.videoRecorder && state.videoRecorder.state === "recording") {
+            state.videoRecorder.stop();
+        }
+        state.videoRecorder = null;
+
         showError(
             "recording-error",
             "Impossible d'accéder au microphone. Vérifiez les permissions de votre navigateur."
@@ -485,16 +496,28 @@ function startFrameCapture(stream) {
     const ctx = canvas.getContext("2d");
     const preview = document.getElementById("video-preview");
 
-    captureOneFrame(preview, canvas, ctx);
-
-    state.frameInterval = setInterval(() => {
-        if (state.capturedFrames.length >= 10) {
-            clearInterval(state.frameInterval);
-            state.frameInterval = null;
-            return;
-        }
+    const beginCapture = () => {
         captureOneFrame(preview, canvas, ctx);
-    }, 10000);
+
+        state.frameInterval = setInterval(() => {
+            if (state.capturedFrames.length >= 10) {
+                clearInterval(state.frameInterval);
+                state.frameInterval = null;
+                return;
+            }
+            captureOneFrame(preview, canvas, ctx);
+        }, 10000);
+    };
+
+    // drawImage() throws InvalidStateError until the video element has
+    // decoded at least one frame (readyState >= HAVE_CURRENT_DATA). Setting
+    // srcObject does not make that data available synchronously, so wait
+    // for it before capturing — unless it's already ready.
+    if (preview.readyState >= 2) {
+        beginCapture();
+    } else {
+        preview.addEventListener("loadeddata", beginCapture, { once: true });
+    }
 }
 
 function captureOneFrame(video, canvas, ctx) {
