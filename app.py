@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = BASE_DIR / "static" / "audio"
+VIDEO_DIR = BASE_DIR / "static" / "video"
 INSTANCE_DIR = BASE_DIR / "instance"
 
 EXT_MAP = {
@@ -43,6 +44,7 @@ def create_app() -> Flask:
     """
     app = Flask(__name__)
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
 
     @app.get("/")
@@ -121,6 +123,7 @@ def create_app() -> Flask:
         session_id = (request.form.get("session_id") or "").strip()
         question_index_raw = request.form.get("question_index")
         duration_raw = request.form.get("duration_seconds", "0")
+        recording_mode = (request.form.get("recording_mode") or "audio").strip()
         audio_file = request.files.get("audio")
 
         if not session_id:
@@ -182,6 +185,37 @@ def create_app() -> Flask:
         feedback["user_audio_url"] = f"/static/audio/{user_audio_filename}"
         feedback["audio_url"] = f"/static/audio/{ideal_audio_filename}"
         feedback["duration_seconds"] = duration_seconds
+
+        if recording_mode == "video":
+            frames = []
+            for i in range(10):
+                frame_file = request.files.get(f"frame_{i}")
+                if frame_file is None:
+                    break
+                frame_bytes = frame_file.read()
+                if frame_bytes:
+                    frames.append(frame_bytes)
+
+            if frames:
+                try:
+                    visual_analysis = ai_service.analyze_visual(
+                        frames=frames,
+                        question=question,
+                        language=session["language"],
+                    )
+                    feedback["analysis_visual"] = visual_analysis
+                except Exception as exc:
+                    logger.exception("Erreur lors de l'analyse visuelle")
+                    feedback["analysis_visual"] = f"Analyse visuelle indisponible : {exc}"
+
+            user_video_filename = f"user_{session_id}_{question_index}.webm"
+            video_file = request.files.get("video")
+            if video_file:
+                video_bytes = video_file.read()
+                if video_bytes:
+                    video_path = VIDEO_DIR / user_video_filename
+                    video_path.write_bytes(video_bytes)
+                    feedback["user_video_url"] = f"/static/video/{user_video_filename}"
 
         storage.save_feedback(session_id, question_index, feedback)
 
