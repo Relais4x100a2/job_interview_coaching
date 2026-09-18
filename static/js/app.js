@@ -13,6 +13,11 @@ const state = {
     audioChunks: [],
     recordingStart: null,
     timerInterval: null,
+    recordingMode: "audio",
+    capturedFrames: [],
+    frameInterval: null,
+    videoChunks: [],
+    videoRecorder: null,
 };
 
 let activeStream = null;
@@ -125,6 +130,13 @@ function stopMicrophone() {
         activeStream.getTracks().forEach((track) => track.stop());
         activeStream = null;
     }
+
+    stopFrameCapture();
+    if (state.videoRecorder && state.videoRecorder.state === "recording") {
+        state.videoRecorder.stop();
+    }
+    state.videoRecorder = null;
+    state.capturedFrames = [];
 
     state.mediaRecorder = null;
     state.isAbandoning = false;
@@ -348,6 +360,9 @@ function resetRecordingView() {
     document.getElementById("user-audio").src = "";
     document.getElementById("ideal-audio").src = "";
     stopTimer();
+    stopFrameCapture();
+    state.capturedFrames = [];
+    document.getElementById("video-preview").classList.add("hidden");
 }
 
 function startRerecording() {
@@ -366,8 +381,20 @@ async function toggleRecording() {
     }
 
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const constraints = state.recordingMode === "video"
+            ? { audio: true, video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } }
+            : { audio: true };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         activeStream = stream;
+
+        if (state.recordingMode === "video") {
+            const preview = document.getElementById("video-preview");
+            preview.srcObject = stream;
+            preview.classList.remove("hidden");
+            startFrameCapture(stream);
+            startVideoRecording(stream);
+        }
 
         const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
             ? "audio/webm;codecs=opus"
@@ -396,7 +423,15 @@ async function toggleRecording() {
             const duration = state.recordingStart
                 ? (Date.now() - state.recordingStart) / 1000
                 : 0;
-            sendAudio(blob, duration);
+
+            if (state.recordingMode === "video") {
+                stopFrameCapture();
+                stopVideoRecording().then((videoBlob) => {
+                    sendMedia(blob, duration, state.capturedFrames, videoBlob);
+                });
+            } else {
+                sendMedia(blob, duration, [], null);
+            }
         };
 
         state.recordingStart = Date.now();
@@ -441,7 +476,77 @@ function stopTimer() {
     }
 }
 
-async function sendAudio(blob, durationSeconds) {
+function startFrameCapture(stream) {
+    state.capturedFrames = [];
+    const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack) return;
+
+    const canvas = document.getElementById("frame-canvas");
+    const ctx = canvas.getContext("2d");
+    const preview = document.getElementById("video-preview");
+
+    captureOneFrame(preview, canvas, ctx);
+
+    state.frameInterval = setInterval(() => {
+        if (state.capturedFrames.length >= 10) {
+            clearInterval(state.frameInterval);
+            state.frameInterval = null;
+            return;
+        }
+        captureOneFrame(preview, canvas, ctx);
+    }, 10000);
+}
+
+function captureOneFrame(video, canvas, ctx) {
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+        (blob) => {
+            if (blob) state.capturedFrames.push(blob);
+        },
+        "image/jpeg",
+        0.7,
+    );
+}
+
+function stopFrameCapture() {
+    if (state.frameInterval) {
+        clearInterval(state.frameInterval);
+        state.frameInterval = null;
+    }
+    const preview = document.getElementById("video-preview");
+    preview.srcObject = null;
+    preview.classList.add("hidden");
+}
+
+function startVideoRecording(stream) {
+    state.videoChunks = [];
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm";
+    state.videoRecorder = new MediaRecorder(stream, { mimeType });
+    state.videoRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) state.videoChunks.push(e.data);
+    };
+    state.videoRecorder.start();
+}
+
+function stopVideoRecording() {
+    return new Promise((resolve) => {
+        if (!state.videoRecorder || state.videoRecorder.state !== "recording") {
+            resolve(null);
+            return;
+        }
+        state.videoRecorder.onstop = () => {
+            const blob = new Blob(state.videoChunks, { type: "video/webm" });
+            resolve(blob);
+        };
+        state.videoRecorder.stop();
+    });
+}
+
+async function sendMedia(audioBlob, durationSeconds, frames, videoBlob) {
     state.isAnalyzing = true;
     setNavigationLocked(true);
 
@@ -449,7 +554,16 @@ async function sendAudio(blob, durationSeconds) {
     formData.append("session_id", state.currentSessionId);
     formData.append("question_index", state.currentQuestionIndex);
     formData.append("duration_seconds", durationSeconds.toFixed(1));
-    formData.append("audio", blob, "recording.webm");
+    formData.append("recording_mode", state.recordingMode);
+    formData.append("audio", audioBlob, "recording.webm");
+
+    frames.forEach((frame, i) => {
+        formData.append(`frame_${i}`, frame, `frame_${i}.jpg`);
+    });
+
+    if (videoBlob) {
+        formData.append("video", videoBlob, "recording.webm");
+    }
 
     try {
         const response = await fetch("/api/analyze-answer", {
@@ -495,6 +609,25 @@ function displayFeedback(data) {
     if (data.audio_url) {
         document.getElementById("ideal-audio").src = `${data.audio_url}?t=${Date.now()}`;
     }
+
+    const visualBlock = document.getElementById("feedback-visual-block");
+    if (data.analysis_visual) {
+        document.getElementById("feedback-visual").textContent = data.analysis_visual;
+        visualBlock.classList.remove("hidden");
+    } else {
+        visualBlock.classList.add("hidden");
+    }
+
+    const userAudio = document.getElementById("user-audio");
+    const userVideo = document.getElementById("user-video");
+    if (data.user_video_url) {
+        userAudio.classList.add("hidden");
+        userVideo.src = `${data.user_video_url}?t=${Date.now()}`;
+        userVideo.classList.remove("hidden");
+    } else {
+        userVideo.classList.add("hidden");
+        userAudio.classList.remove("hidden");
+    }
 }
 
 document.getElementById("btn-generate").addEventListener("click", generateQuestions);
@@ -504,5 +637,11 @@ document.getElementById("btn-back-home").addEventListener("click", goToSetup);
 document.getElementById("nav-home").addEventListener("click", goToSetup);
 document.getElementById("btn-back-to-questions").addEventListener("click", goToQuestions);
 document.getElementById("btn-back-questions-consult").addEventListener("click", goToQuestions);
+
+document.querySelectorAll('input[name="recording-mode"]').forEach((radio) => {
+    radio.addEventListener("change", (e) => {
+        state.recordingMode = e.target.value;
+    });
+});
 
 document.addEventListener("DOMContentLoaded", loadSessions);

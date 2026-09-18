@@ -99,7 +99,22 @@
             <!-- Mode enregistrement -->
             <div id="recording-mode" class="space-y-4">
                 <div id="recording-controls" class="bg-white rounded-xl shadow-md p-6 text-center space-y-4">
+                    <div id="mode-selector" class="flex justify-center gap-4 mb-4">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="recording-mode" value="audio" checked
+                                class="accent-indigo-600">
+                            <span class="text-sm text-slate-600">Audio seul</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="recording-mode" value="video"
+                                class="accent-indigo-600">
+                            <span class="text-sm text-slate-600">Vidéo</span>
+                        </label>
+                    </div>
                     <p id="recording-status" class="text-slate-500">Appuyez pour enregistrer votre réponse</p>
+                    <video id="video-preview" autoplay muted playsinline
+                        class="hidden mx-auto rounded-lg w-full max-w-md mb-4 -scale-x-100"></video>
+                    <canvas id="frame-canvas" class="hidden"></canvas>
                     <button id="btn-record" type="button"
                         class="bg-red-500 hover:bg-red-600 text-white font-semibold px-8 py-3 rounded-full transition">
                         Démarrer l'enregistrement
@@ -121,6 +136,8 @@
                 <div>
                     <h3 class="font-semibold text-slate-700 mb-1">Votre enregistrement</h3>
                     <audio id="user-audio" controls class="w-full"></audio>
+                    <video id="user-video" controls playsinline
+                        class="hidden w-full rounded-lg"></video>
                 </div>
                 <div>
                     <h3 class="font-semibold text-slate-700 mb-1">Transcription</h3>
@@ -133,6 +150,10 @@
                 <div>
                     <h3 class="font-semibold text-slate-700 mb-1">Analyse de la forme</h3>
                     <p id="feedback-form" class="text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                </div>
+                <div id="feedback-visual-block" class="hidden">
+                    <h3 class="font-semibold text-slate-700 mb-1">Analyse du non-verbal</h3>
+                    <p id="feedback-visual" class="text-slate-600 bg-amber-50 p-3 rounded-lg whitespace-pre-wrap"></p>
                 </div>
                 <div>
                     <h3 class="font-semibold text-slate-700 mb-1">Réponse idéale</h3>
