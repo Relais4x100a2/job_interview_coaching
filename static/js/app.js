@@ -404,7 +404,10 @@ async function toggleRecording() {
             : "audio/webm";
 
         state.audioChunks = [];
-        state.mediaRecorder = new MediaRecorder(stream, { mimeType });
+        const audioStream = state.recordingMode === "video"
+            ? new MediaStream(stream.getAudioTracks())
+            : stream;
+        state.mediaRecorder = new MediaRecorder(audioStream, { mimeType });
 
         state.mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
@@ -456,11 +459,12 @@ async function toggleRecording() {
         }
         state.videoRecorder = null;
 
+        console.error("Erreur d'accès média :", err);
+        const device = state.recordingMode === "video" ? "la caméra et au microphone" : "au microphone";
+        const detail = err.name ? ` (${err.name})` : "";
         showError(
             "recording-error",
-            state.recordingMode === "video"
-                ? "Impossible d'accéder à la caméra et au microphone. Vérifiez les permissions de votre navigateur."
-                : "Impossible d'accéder au microphone. Vérifiez les permissions de votre navigateur."
+            `Impossible d'accéder à ${device}${detail}. Vérifiez les permissions de votre navigateur.`
         );
     }
 }
