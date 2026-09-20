@@ -30,6 +30,8 @@
             <span id="breadcrumb-sep-1" class="hidden"> &gt; </span>
             <span id="breadcrumb-offer" class="hidden font-medium text-slate-700"></span>
             <span id="breadcrumb-sep-2" class="hidden"> &gt; </span>
+            <span id="breadcrumb-interview" class="hidden font-medium text-slate-700"></span>
+            <span id="breadcrumb-sep-3" class="hidden"> &gt; </span>
             <span id="breadcrumb-question" class="hidden"></span>
         </nav>
 
@@ -62,7 +64,7 @@
                 </section>
                 <hr class="my-6 border-slate-200">
 
-                <h2 class="text-xl font-semibold text-slate-700 mb-4">Configuration de l'entretien</h2>
+                <h2 class="text-xl font-semibold text-slate-700 mb-4">Nouvelle offre</h2>
 
                 <div class="space-y-4">
                     <div>
@@ -79,42 +81,72 @@
                             placeholder="Collez la description de l'offre..."></textarea>
                     </div>
 
-                    <div>
-                        <label for="language" class="block text-sm font-medium mb-1">Langue de l'entretien *</label>
-                        <select id="language"
-                            class="w-full border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                            <option value="fr">Français</option>
-                            <option value="en">Anglais</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label for="context" class="block text-sm font-medium mb-1">Contexte de l'entretien *</label>
-                        <textarea id="context" rows="3" required
-                            class="w-full border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            placeholder="Ex: Entretien screening RH, Échange technique avec le Head of Data..."></textarea>
-                    </div>
-
-                    <button id="btn-generate" type="button"
+                    <button id="btn-create-offer" type="button"
                         class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition">
-                        Générer les questions
+                        Créer l'offre
                     </button>
                     <p id="setup-error" class="text-red-600 text-sm hidden"></p>
                 </div>
             </div>
         </section>
 
-        <!-- Écran 2 : Liste des questions -->
-        <section id="view-questions" class="hidden space-y-4">
-            <button id="btn-back-home" type="button"
+        <!-- Écran 2 : Détail de l'offre (liste des entretiens) -->
+        <section id="view-offer" class="hidden space-y-4">
+            <button id="btn-back-home-offer" type="button"
                 class="text-sm text-indigo-600 hover:underline">
-                ← Retour à l'accueil / Changer d'offre
+                ← Retour à l'accueil
+            </button>
+            <h2 class="text-xl font-semibold text-slate-700">Entretiens</h2>
+
+            <div id="interviews-list" class="grid gap-3 sm:grid-cols-2"></div>
+            <p id="interviews-empty" class="text-slate-400 text-sm hidden">
+                Aucun entretien. Ajoutez votre premier entretien pour commencer.
+            </p>
+            <p id="interview-error" class="text-red-600 text-sm hidden"></p>
+
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <button id="btn-toggle-add-interview" type="button"
+                    class="w-full text-indigo-600 font-semibold hover:underline">
+                    + Ajouter un entretien
+                </button>
+                <div id="add-interview-form" class="hidden mt-4 space-y-3">
+                    <div>
+                        <label for="interview-context" class="block text-sm font-medium mb-1">
+                            Type d'entretien *
+                        </label>
+                        <textarea id="interview-context" rows="2"
+                            class="w-full border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            placeholder="Ex: Screening RH, Entretien technique avec le CTO..."></textarea>
+                    </div>
+                    <div>
+                        <label for="interview-language" class="block text-sm font-medium mb-1">
+                            Langue *
+                        </label>
+                        <select id="interview-language"
+                            class="w-full border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="fr">Français</option>
+                            <option value="en">Anglais</option>
+                        </select>
+                    </div>
+                    <button id="btn-add-interview" type="button"
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition">
+                        Générer les questions
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Écran 3 : Liste des questions -->
+        <section id="view-questions" class="hidden space-y-4">
+            <button id="btn-back-to-offer" type="button"
+                class="text-sm text-indigo-600 hover:underline">
+                ← Retour aux entretiens
             </button>
             <h2 class="text-xl font-semibold text-slate-700">Choisissez une question</h2>
             <div id="questions-grid" class="grid gap-3 sm:grid-cols-2"></div>
         </section>
 
-        <!-- Écran 3 : Enregistrement et feedback -->
+        <!-- Écran 4 : Enregistrement et feedback -->
         <section id="view-recording" class="hidden space-y-4">
             <button id="btn-back-to-questions" type="button"
                 class="text-sm text-indigo-600 hover:underline">
