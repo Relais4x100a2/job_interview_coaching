@@ -52,19 +52,40 @@ def create_app() -> Flask:
         """Affiche la page principale de l'application."""
         return render_template("index.html")
 
-    @app.post("/api/generate-questions")
-    def generate_questions():
-        """Génère des questions d'entretien personnalisées."""
+    @app.post("/api/sessions")
+    def create_session():
+        """Crée une nouvelle offre (CV + offre d'emploi)."""
         data = request.get_json(silent=True) or {}
         cv = (data.get("cv") or "").strip()
         job_offer = (data.get("job_offer") or "").strip()
-        language = (data.get("language") or "").strip()
-        context = (data.get("context") or "").strip()
+        offer_title = (data.get("offer_title") or "").strip()
 
         if not cv:
             raise BadRequest("Le champ 'cv' est obligatoire.")
         if not job_offer:
             raise BadRequest("Le champ 'job_offer' est obligatoire.")
+
+        session_id = storage.create_session(cv=cv, job_offer=job_offer)
+        if offer_title:
+            storage.update_offer_title(session_id, offer_title)
+
+        session = storage.get_session(session_id)
+        return jsonify({
+            "session_id": session_id,
+            "offer_title": session["offer_title"] if session else offer_title,
+        })
+
+    @app.post("/api/sessions/<session_id>/interviews")
+    def create_interview(session_id: str):
+        """Crée un entretien (contexte + langue) pour une offre existante."""
+        session = storage.get_session(session_id)
+        if session is None:
+            raise NotFound("Session introuvable.")
+
+        data = request.get_json(silent=True) or {}
+        context = (data.get("context") or "").strip()
+        language = (data.get("language") or "").strip()
+
         if not context:
             raise BadRequest("Le champ 'context' est obligatoire.")
         if language not in ("fr", "en"):
@@ -72,8 +93,8 @@ def create_app() -> Flask:
 
         try:
             questions = ai_service.generate_questions(
-                cv=cv,
-                job_offer=job_offer,
+                cv=session["cv"],
+                job_offer=session["job_offer"],
                 language=language,
                 context=context,
             )
@@ -81,26 +102,59 @@ def create_app() -> Flask:
             logger.exception("Erreur lors de la génération de questions")
             return jsonify({"error": str(exc)}), 500
 
-        session_id = storage.create_session(
-            cv=cv,
-            job_offer=job_offer,
-            language=language,
-            context=context,
-        )
-        storage.save_questions(session_id, questions)
+        interview_id = storage.create_interview(session_id, context, language)
+        storage.save_questions(interview_id, questions)
 
-        session = storage.get_session(session_id)
         return jsonify({
-            "session_id": session_id,
-            "offer_title": session["offer_title"] if session else "",
+            "interview_id": interview_id,
+            "context": context,
+            "language": language,
             "questions": questions,
         })
+
+    @app.get("/api/interviews/<interview_id>")
+    def get_interview_detail(interview_id: str):
+        """Retourne le détail d'un entretien (questions, feedbacks)."""
+        interview = storage.get_interview(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
+        return jsonify({
+            "interview_id": interview["interview_id"],
+            "session_id": interview["session_id"],
+            "context": interview["context"],
+            "language": interview["language"],
+            "questions": interview["questions"],
+            "feedbacks": interview["feedbacks"],
+            "created_at": interview["created_at"].isoformat(),
+        })
+
+    @app.delete("/api/interviews/<interview_id>")
+    def delete_interview(interview_id: str):
+        """Supprime définitivement un entretien."""
+        try:
+            storage.delete_interview(interview_id)
+        except KeyError:
+            raise NotFound("Entretien introuvable.")
+        return jsonify({"ok": True})
 
     @app.get("/api/sessions")
     def list_sessions():
         """Retourne la liste des sessions enregistrées."""
         archived = request.args.get("archived", "false").lower() == "true"
         return jsonify({"sessions": storage.get_all_sessions(archived=archived)})
+
+    @app.patch("/api/sessions/<session_id>/title")
+    def update_session_title(session_id: str):
+        """Met à jour le titre d'une session."""
+        data = request.get_json(silent=True) or {}
+        title = (data.get("title") or "").strip()
+        if not title:
+            raise BadRequest("Le titre ne peut pas être vide.")
+        try:
+            storage.update_offer_title(session_id, title)
+        except KeyError:
+            raise NotFound("Session introuvable.")
+        return jsonify({"ok": True, "offer_title": title})
 
     @app.post("/api/sessions/<session_id>/archive")
     def archive_session(session_id: str):
@@ -131,31 +185,32 @@ def create_app() -> Flask:
 
     @app.get("/api/sessions/<session_id>")
     def get_session_detail(session_id: str):
-        """Retourne le détail d'une session avec questions et feedbacks."""
+        """Retourne le détail d'une offre avec la liste de ses entretiens."""
         session = storage.get_session(session_id)
         if session is None:
             raise NotFound("Session introuvable.")
+        interviews = [
+            {**itw, "created_at": itw["created_at"].isoformat()}
+            for itw in session["interviews"]
+        ]
         return jsonify({
             "session_id": session["session_id"],
             "offer_title": session["offer_title"],
-            "language": session["language"],
-            "context": session["context"],
             "created_at": session["created_at"].isoformat(),
-            "questions": session["questions"],
-            "feedbacks": session["feedbacks"],
+            "interviews": interviews,
         })
 
     @app.post("/api/analyze-answer")
     def analyze_answer():
         """Transcrit, analyse et synthétise le feedback d'une réponse orale."""
-        session_id = (request.form.get("session_id") or "").strip()
+        interview_id = (request.form.get("interview_id") or "").strip()
         question_index_raw = request.form.get("question_index")
         duration_raw = request.form.get("duration_seconds", "0")
         recording_mode = (request.form.get("recording_mode") or "audio").strip()
         audio_file = request.files.get("audio")
 
-        if not session_id:
-            raise BadRequest("Le champ 'session_id' est obligatoire.")
+        if not interview_id:
+            raise BadRequest("Le champ 'interview_id' est obligatoire.")
         if question_index_raw is None:
             raise BadRequest("Le champ 'question_index' est obligatoire.")
         if audio_file is None or not audio_file.filename:
@@ -167,11 +222,11 @@ def create_app() -> Flask:
         except ValueError as exc:
             raise BadRequest("question_index ou duration_seconds invalide.") from exc
 
-        session = storage.get_session(session_id)
-        if session is None:
-            raise NotFound("Session introuvable.")
+        interview = storage.get_interview_with_session(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
 
-        questions = session.get("questions", [])
+        questions = interview.get("questions", [])
         if question_index < 0 or question_index >= len(questions):
             raise BadRequest("Index de question invalide.")
 
@@ -186,7 +241,7 @@ def create_app() -> Flask:
         clean_content_type = raw_content_type.split(";")[0].strip()
         ext = EXT_MAP.get(clean_content_type, "webm")
 
-        user_audio_filename = f"user_{session_id}_{question_index}.{ext}"
+        user_audio_filename = f"user_{interview_id}_{question_index}.{ext}"
         user_audio_path = AUDIO_DIR / user_audio_filename
         user_audio_path.write_bytes(audio_bytes)
 
@@ -195,10 +250,10 @@ def create_app() -> Flask:
             feedback = ai_service.analyze_answer(
                 question=question,
                 transcription=transcription,
-                cv=session["cv"],
-                job_offer=session["job_offer"],
-                context=session["context"],
-                language=session["language"],
+                cv=interview["cv"],
+                job_offer=interview["job_offer"],
+                context=interview["context"],
+                language=interview["language"],
                 duration_seconds=duration_seconds,
             )
             mp3_bytes = ai_service.synthesize_speech(feedback["ideal_answer_text"])
@@ -206,7 +261,7 @@ def create_app() -> Flask:
             logger.exception("Erreur lors de l'analyse de la réponse")
             return jsonify({"error": str(exc)}), 500
 
-        ideal_audio_filename = f"ideal_{session_id}_{question_index}.mp3"
+        ideal_audio_filename = f"ideal_{interview_id}_{question_index}.mp3"
         ideal_audio_path = AUDIO_DIR / ideal_audio_filename
         ideal_audio_path.write_bytes(mp3_bytes)
 
@@ -224,7 +279,7 @@ def create_app() -> Flask:
                 frame_bytes = frame_file.read()
                 if frame_bytes:
                     frames.append(frame_bytes)
-                    frame_filename = f"frame_{session_id}_{question_index}_{i}.jpg"
+                    frame_filename = f"frame_{interview_id}_{question_index}_{i}.jpg"
                     (VIDEO_DIR / frame_filename).write_bytes(frame_bytes)
                     frame_urls.append(f"/static/video/{frame_filename}")
 
@@ -233,7 +288,7 @@ def create_app() -> Flask:
                     visual_analysis = ai_service.analyze_visual(
                         frames=frames,
                         question=question,
-                        language=session["language"],
+                        language=interview["language"],
                     )
                     feedback["analysis_visual"] = visual_analysis
                 except Exception as exc:
@@ -243,7 +298,7 @@ def create_app() -> Flask:
             if frame_urls:
                 feedback["frame_urls"] = frame_urls
 
-            user_video_filename = f"user_{session_id}_{question_index}.webm"
+            user_video_filename = f"user_{interview_id}_{question_index}.webm"
             video_file = request.files.get("video")
             if video_file:
                 video_bytes = video_file.read()
@@ -252,7 +307,7 @@ def create_app() -> Flask:
                     video_path.write_bytes(video_bytes)
                     feedback["user_video_url"] = f"/static/video/{user_video_filename}"
 
-        storage.save_feedback(session_id, question_index, feedback)
+        storage.save_feedback(interview_id, question_index, feedback)
 
         return jsonify(feedback)
 
