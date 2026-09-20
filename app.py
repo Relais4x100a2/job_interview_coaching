@@ -188,6 +188,7 @@ def create_app() -> Flask:
 
         if recording_mode == "video":
             frames = []
+            frame_urls = []
             for i in range(10):
                 frame_file = request.files.get(f"frame_{i}")
                 if frame_file is None:
@@ -195,6 +196,9 @@ def create_app() -> Flask:
                 frame_bytes = frame_file.read()
                 if frame_bytes:
                     frames.append(frame_bytes)
+                    frame_filename = f"frame_{session_id}_{question_index}_{i}.jpg"
+                    (VIDEO_DIR / frame_filename).write_bytes(frame_bytes)
+                    frame_urls.append(f"/static/video/{frame_filename}")
 
             if frames:
                 try:
@@ -207,6 +211,9 @@ def create_app() -> Flask:
                 except Exception as exc:
                     logger.exception("Erreur lors de l'analyse visuelle")
                     feedback["analysis_visual"] = "Analyse visuelle indisponible."
+
+            if frame_urls:
+                feedback["frame_urls"] = frame_urls
 
             user_video_filename = f"user_{session_id}_{question_index}.webm"
             video_file = request.files.get("video")

@@ -642,7 +642,18 @@ function displayFeedback(data) {
     }
 
     const visualBlock = document.getElementById("feedback-visual-block");
+    const framesContainer = document.getElementById("feedback-frames");
+    framesContainer.innerHTML = "";
     if (data.analysis_visual) {
+        if (data.frame_urls && data.frame_urls.length > 0) {
+            data.frame_urls.forEach((url, i) => {
+                const img = document.createElement("img");
+                img.src = `${url}?t=${Date.now()}`;
+                img.alt = `Capture ${i + 1}`;
+                img.className = "rounded-lg border border-slate-200 h-32 flex-shrink-0";
+                framesContainer.appendChild(img);
+            });
+        }
         document.getElementById("feedback-visual").textContent = data.analysis_visual;
         visualBlock.classList.remove("hidden");
     } else {
