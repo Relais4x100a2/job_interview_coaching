@@ -157,6 +157,13 @@ def generate_questions(
         "Tu es un expert en recrutement. Génère des questions d'entretien "
         "pertinentes basées sur le CV, l'offre d'emploi et le contexte fournis. "
         f"Les questions doivent être rédigées en {lang_label}. "
+        "IMPORTANT : génère des questions **spécifiques au type d'entretien décrit "
+        "dans le contexte**. Par exemple : pour un screening RH, concentre-toi sur "
+        "la motivation, le parcours, les prétentions salariales et la disponibilité. "
+        "Pour un entretien technique, concentre-toi sur les compétences techniques, "
+        "la résolution de problèmes et les choix d'architecture. "
+        "Pour un entretien manager, concentre-toi sur le leadership, la gestion "
+        "d'équipe et la vision stratégique. Adapte les questions au contexte fourni. "
         f'La toute première question (Question #1) DOIT être strictement : "{intro_q}". '
         "Génère ensuite 4 à 6 questions spécifiques basées sur le CV, l'offre et le contexte. "
         'Réponds uniquement en JSON avec la clé "questions" contenant '
