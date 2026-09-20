@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -231,12 +232,16 @@ def analyze_answer(
     system_prompt = (
         "Tu es un coach en entretien d'embauche. Analyse la réponse du candidat "
         "et produis un feedback détaillé. "
-        f"Rédige ideal_answer_text en {lang_label}. "
+        "IMPORTANT : rédige analysis_content et analysis_form TOUJOURS en français, "
+        "même si l'entretien est en anglais. Ce sont des feedbacks pour le candidat francophone. "
+        "Chaque champ d'analyse doit être une chaîne de texte fluide (paragraphes), "
+        "PAS un objet JSON imbriqué. "
+        f"Rédige ideal_answer_text en {lang_label} (la langue de l'entretien). "
         "Réponds uniquement en JSON avec exactement ces clés : "
         "transcription, analysis_content, analysis_form, ideal_answer_text. "
-        "analysis_content : pertinence, éléments du CV omis ou mal valorisés "
-        "par rapport à l'offre. "
-        "analysis_form : syntaxe, grammaire, tics de langage, clarté, "
+        "analysis_content (en français) : pertinence de la réponse, éléments du CV "
+        "omis ou mal valorisés par rapport à l'offre. "
+        "analysis_form (en français) : syntaxe, grammaire, tics de langage, clarté, "
         f"débit estimé ({wpm} mots/minute sur {duration_seconds:.1f}s)."
     )
     user_prompt = (
@@ -268,6 +273,73 @@ def analyze_answer(
         "analysis_form": str(data["analysis_form"]),
         "ideal_answer_text": str(data["ideal_answer_text"]),
     }
+
+
+def analyze_visual(
+    frames: list[bytes],
+    question: str,
+    language: str,
+) -> str:
+    """Analyse les frames vidéo via GPT-4o vision pour le feedback non-verbal.
+
+    Args:
+        frames: Liste d'images JPEG en bytes.
+        question: Question d'entretien posée.
+        language: Code langue ('fr' ou 'en').
+
+    Returns:
+        Texte d'analyse du non-verbal.
+
+    Raises:
+        ValueError: Si aucune frame n'est fournie.
+    """
+    if not frames:
+        raise ValueError("Au moins une frame est requise pour l'analyse visuelle.")
+
+    lang_label = LANGUAGE_LABELS.get(language, language)
+
+    system_prompt = (
+        "Tu es un coach expert en communication non-verbale pour les entretiens "
+        "d'embauche. On te fournit des captures d'écran extraites de la vidéo d'un "
+        "candidat répondant à une question d'entretien. "
+        "Analyse : expressions faciales, contact visuel (regarde-t-il la caméra ?), "
+        "posture, gestes, tics corporels, niveau de confiance perçu. "
+        "Donne des conseils concrets d'amélioration. "
+        "OBLIGATION : tu DOIS rédiger TOUTE ton analyse en français. "
+        "Peu importe la langue de la question ou de l'entretien, "
+        "ta réponse est intégralement en français."
+    )
+
+    image_parts = []
+    for frame in frames:
+        b64 = base64.b64encode(frame).decode("utf-8")
+        image_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
+        })
+
+    user_content = [
+        {"type": "text", "text": (
+            f"Question posée au candidat : {question}\n\n"
+            "Rappel : rédige ton analyse entièrement en français."
+        )},
+        *image_parts,
+    ]
+
+    client = _get_openai_client()
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        max_tokens=1000,
+        temperature=0.7,
+    )
+    content = response.choices[0].message.content
+    if not content:
+        raise RuntimeError("Réponse GPT-4o vision vide.")
+    return content.strip()
 
 
 def synthesize_speech(text: str) -> bytes:
