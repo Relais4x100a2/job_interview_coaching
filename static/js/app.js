@@ -3,6 +3,9 @@
 const state = {
     currentSessionId: null,
     offerTitle: null,
+    interviews: [],
+    currentInterviewId: null,
+    currentInterviewContext: null,
     questions: [],
     feedbacks: {},
     currentQuestionIndex: null,
@@ -23,7 +26,8 @@ const state = {
 let activeStream = null;
 
 const NAV_BUTTON_IDS = [
-    "btn-back-home",
+    "btn-back-home-offer",
+    "btn-back-to-offer",
     "btn-back-to-questions",
     "nav-home",
     "btn-back-questions-consult",
@@ -32,6 +36,7 @@ const NAV_BUTTON_IDS = [
 
 const views = {
     setup: document.getElementById("view-setup"),
+    offer: document.getElementById("view-offer"),
     questions: document.getElementById("view-questions"),
     recording: document.getElementById("view-recording"),
 };
@@ -86,7 +91,9 @@ function updateBreadcrumb(view) {
     const breadcrumb = document.getElementById("breadcrumb");
     const sep1 = document.getElementById("breadcrumb-sep-1");
     const sep2 = document.getElementById("breadcrumb-sep-2");
+    const sep3 = document.getElementById("breadcrumb-sep-3");
     const offerEl = document.getElementById("breadcrumb-offer");
+    const interviewEl = document.getElementById("breadcrumb-interview");
     const questionEl = document.getElementById("breadcrumb-question");
 
     if (!view || view === "setup") {
@@ -98,13 +105,24 @@ function updateBreadcrumb(view) {
     sep1.classList.remove("hidden");
     offerEl.classList.remove("hidden");
     offerEl.textContent = state.offerTitle || "Offre";
+    offerEl.title = "Cliquer pour renommer";
+    offerEl.style.cursor = "pointer";
+
+    if (view === "questions" || view === "recording") {
+        sep2.classList.remove("hidden");
+        interviewEl.classList.remove("hidden");
+        interviewEl.textContent = state.currentInterviewContext || "Entretien";
+    } else {
+        sep2.classList.add("hidden");
+        interviewEl.classList.add("hidden");
+    }
 
     if (view === "recording" && state.currentQuestionIndex !== null) {
-        sep2.classList.remove("hidden");
+        sep3.classList.remove("hidden");
         questionEl.classList.remove("hidden");
         questionEl.textContent = `Question ${state.currentQuestionIndex + 1}/${state.questions.length}`;
     } else {
-        sep2.classList.add("hidden");
+        sep3.classList.add("hidden");
         questionEl.classList.add("hidden");
     }
 }
@@ -143,6 +161,61 @@ function stopMicrophone() {
     stopTimer();
 }
 
+async function updateOfferTitle(sessionId, newTitle) {
+    const resp = await fetch(`/api/sessions/${sessionId}/title`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle }),
+    });
+    if (!resp.ok) throw new Error("Erreur lors de la mise à jour du titre.");
+    if (sessionId === state.currentSessionId) {
+        state.offerTitle = newTitle;
+    }
+}
+
+function startTitleEdit(titleEl, sessionId, onSaved) {
+    const current = titleEl.textContent;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = current;
+    input.className = "font-medium text-slate-800 border border-indigo-300 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-2 focus:ring-indigo-400";
+
+    const commit = async () => {
+        const val = input.value.trim();
+        if (!val || val === current) {
+            titleEl.textContent = current;
+            input.replaceWith(titleEl);
+            return;
+        }
+        try {
+            await updateOfferTitle(sessionId, val);
+            titleEl.textContent = val;
+            input.replaceWith(titleEl);
+            if (onSaved) onSaved();
+        } catch {
+            titleEl.textContent = current;
+            input.replaceWith(titleEl);
+        }
+    };
+
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+        if (e.key === "Escape") { input.value = current; input.blur(); }
+    });
+
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
+function getCurrentView() {
+    for (const [key, el] of Object.entries(views)) {
+        if (!el.classList.contains("hidden")) return key;
+    }
+    return "setup";
+}
+
 function showRecordingMode() {
     document.getElementById("recording-mode").classList.remove("hidden");
     document.getElementById("consultation-mode").classList.add("hidden");
@@ -161,8 +234,30 @@ function showConsultationMode(feedback) {
 function goToSetup() {
     if (state.isAnalyzing) return;
     stopMicrophone();
+    state.currentSessionId = null;
+    state.offerTitle = null;
+    state.interviews = [];
+    state.currentInterviewId = null;
+    state.currentInterviewContext = null;
+    state.questions = [];
+    state.feedbacks = {};
     state.currentQuestionIndex = null;
     showView("setup");
+    loadSessions();
+}
+
+function goToOffer() {
+    if (state.isAnalyzing) return;
+    stopMicrophone();
+    state.currentInterviewId = null;
+    state.currentInterviewContext = null;
+    state.questions = [];
+    state.feedbacks = {};
+    state.currentQuestionIndex = null;
+    document.getElementById("add-interview-form").classList.add("hidden");
+    document.getElementById("btn-toggle-add-interview").textContent = "+ Ajouter un entretien";
+    showView("offer");
+    loadOfferDetail(state.currentSessionId);
 }
 
 function goToQuestions() {
@@ -199,23 +294,25 @@ async function loadSessions() {
     }
 }
 
+function interviewCountLabel(count) {
+    return `${count} entretien${count === 1 ? "" : "s"}`;
+}
+
 function renderSessions(sessions) {
     const listEl = document.getElementById("sessions-list");
     listEl.innerHTML = "";
 
     sessions.forEach((session) => {
-        const langLabel = session.language === "fr" ? "Français" : "Anglais";
-        const contextPreview = session.context.length > 60
-            ? `${session.context.slice(0, 60)}…`
-            : session.context;
-
         const card = document.createElement("div");
         card.className =
             "text-left bg-slate-50 border border-slate-200 rounded-lg p-4 hover:ring-2 hover:ring-indigo-400 transition cursor-pointer";
         card.innerHTML = `
-            <p class="font-medium text-slate-800">${session.offer_title}</p>
-            <p class="text-xs text-slate-500 mt-1">${langLabel} · ${formatDate(session.created_at)}</p>
-            <p class="text-sm text-slate-600 mt-2">${contextPreview}</p>
+            <div class="flex items-start justify-between gap-1">
+                <p class="font-medium text-slate-800 session-title">${session.offer_title}</p>
+                <button type="button" data-action="edit-title" class="text-xs text-slate-400 hover:text-indigo-600 px-1 py-0.5 rounded hover:bg-indigo-50 transition flex-shrink-0" title="Renommer">✏️</button>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">${formatDate(session.created_at)}</p>
+            <p class="text-sm text-slate-600 mt-2">${interviewCountLabel(session.interview_count)}</p>
             <div class="flex gap-2 mt-3 justify-end">
                 <button type="button" data-action="archive" class="text-xs text-slate-400 hover:text-amber-600 px-2 py-1 rounded hover:bg-amber-50 transition">Archiver</button>
                 <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
@@ -224,6 +321,11 @@ function renderSessions(sessions) {
         card.addEventListener("click", (e) => {
             if (e.target.closest("[data-action]")) return;
             resumeSession(session.session_id);
+        });
+        card.querySelector("[data-action='edit-title']").addEventListener("click", (e) => {
+            e.stopPropagation();
+            const titleEl = card.querySelector(".session-title");
+            startTitleEdit(titleEl, session.session_id);
         });
         card.querySelector("[data-action='archive']").addEventListener("click", (e) => {
             e.stopPropagation();
@@ -249,23 +351,26 @@ function renderArchivedSessions(sessions) {
     emptyEl.classList.add("hidden");
 
     sessions.forEach((session) => {
-        const langLabel = session.language === "fr" ? "Français" : "Anglais";
-        const contextPreview = session.context.length > 60
-            ? `${session.context.slice(0, 60)}…`
-            : session.context;
-
         const card = document.createElement("div");
         card.className =
             "text-left bg-slate-50 border border-slate-200 rounded-lg p-4 transition";
         card.innerHTML = `
-            <p class="font-medium text-slate-800">${session.offer_title}</p>
-            <p class="text-xs text-slate-500 mt-1">${langLabel} · ${formatDate(session.created_at)}</p>
-            <p class="text-sm text-slate-600 mt-2">${contextPreview}</p>
+            <div class="flex items-start justify-between gap-1">
+                <p class="font-medium text-slate-800 session-title">${session.offer_title}</p>
+                <button type="button" data-action="edit-title" class="text-xs text-slate-400 hover:text-indigo-600 px-1 py-0.5 rounded hover:bg-indigo-50 transition flex-shrink-0" title="Renommer">✏️</button>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">${formatDate(session.created_at)}</p>
+            <p class="text-sm text-slate-600 mt-2">${interviewCountLabel(session.interview_count)}</p>
             <div class="flex gap-2 mt-3 justify-end">
                 <button type="button" data-action="unarchive" class="text-xs text-indigo-500 hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-50 transition">Restaurer</button>
                 <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
             </div>
         `;
+        card.querySelector("[data-action='edit-title']").addEventListener("click", (e) => {
+            e.stopPropagation();
+            const titleEl = card.querySelector(".session-title");
+            startTitleEdit(titleEl, session.session_id);
+        });
         card.querySelector("[data-action='unarchive']").addEventListener("click", () => {
             unarchiveSession(session.session_id);
         });
@@ -334,16 +439,56 @@ function hideArchivedSection() {
     document.getElementById("history-section").classList.remove("hidden");
 }
 
-function applySessionData(data) {
-    state.currentSessionId = data.session_id;
-    state.offerTitle = data.offer_title || "Offre";
-    state.questions = data.questions || [];
-    state.feedbacks = data.feedbacks || {};
-    state.currentQuestionIndex = null;
+function resumeSession(sessionId) {
+    hideError("sessions-error");
+    state.currentSessionId = sessionId;
+    goToOffer();
 }
 
-async function resumeSession(sessionId) {
-    hideError("sessions-error");
+async function createOffer() {
+    hideError("setup-error");
+
+    const cv = document.getElementById("cv").value.trim();
+    const jobOffer = document.getElementById("job-offer").value.trim();
+
+    if (!cv || !jobOffer) {
+        showError("setup-error", "Veuillez remplir tous les champs obligatoires.");
+        return;
+    }
+
+    const btn = document.getElementById("btn-create-offer");
+    btn.disabled = true;
+    btn.textContent = "Création en cours...";
+
+    try {
+        const response = await fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cv, job_offer: jobOffer }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Erreur lors de la création de l'offre.");
+        }
+
+        state.currentSessionId = data.session_id;
+        state.offerTitle = data.offer_title;
+        document.getElementById("cv").value = "";
+        document.getElementById("job-offer").value = "";
+
+        goToOffer();
+        loadSessions();
+    } catch (err) {
+        showError("setup-error", err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Créer l'offre";
+    }
+}
+
+async function loadOfferDetail(sessionId) {
+    hideError("interview-error");
 
     try {
         const response = await fetch(`/api/sessions/${sessionId}`);
@@ -352,48 +497,109 @@ async function resumeSession(sessionId) {
         if (response.status === 404) {
             showError(
                 "sessions-error",
-                "Cette session n'existe plus (serveur redémarré). " +
+                "Cette offre n'existe plus (serveur redémarré). " +
                 "Veuillez créer une nouvelle offre ou en sélectionner une autre."
             );
             await loadSessions();
-            showView("setup");
+            goToSetup();
             return;
         }
 
         if (!response.ok) {
-            throw new Error(data.error || "Erreur lors du chargement de la session.");
+            throw new Error(data.error || "Erreur lors du chargement de l'offre.");
         }
 
-        applySessionData(data);
-        renderQuestions();
-        showView("questions");
+        state.currentSessionId = data.session_id;
+        state.offerTitle = data.offer_title;
+        state.interviews = data.interviews || [];
+        renderInterviews();
+        updateBreadcrumb(getCurrentView());
     } catch (err) {
-        showError("sessions-error", err.message);
+        showError("interview-error", err.message);
     }
 }
 
-async function generateQuestions() {
-    hideError("setup-error");
+function renderInterviews() {
+    const listEl = document.getElementById("interviews-list");
+    const emptyEl = document.getElementById("interviews-empty");
+    listEl.innerHTML = "";
 
-    const cv = document.getElementById("cv").value.trim();
-    const jobOffer = document.getElementById("job-offer").value.trim();
-    const language = document.getElementById("language").value;
-    const context = document.getElementById("context").value.trim();
+    if (state.interviews.length === 0) {
+        emptyEl.classList.remove("hidden");
+        return;
+    }
+    emptyEl.classList.add("hidden");
 
-    if (!cv || !jobOffer || !context) {
-        showError("setup-error", "Veuillez remplir tous les champs obligatoires.");
+    state.interviews.forEach((interview) => {
+        const isFr = interview.language === "fr";
+        const langLabel = isFr ? "FR" : "EN";
+        const langClass = isFr ? "bg-indigo-100 text-indigo-700" : "bg-amber-100 text-amber-700";
+        const progress = `${interview.feedback_count}/${interview.question_count} complétées`;
+
+        const card = document.createElement("div");
+        card.className =
+            "text-left bg-white border border-slate-200 rounded-lg p-4 hover:ring-2 hover:ring-indigo-400 transition cursor-pointer";
+        card.innerHTML = `
+            <div class="flex items-start justify-between gap-2">
+                <p class="font-medium text-slate-800">${interview.context}</p>
+                <span class="text-xs font-semibold ${langClass} px-2 py-0.5 rounded-full flex-shrink-0">${langLabel}</span>
+            </div>
+            <p class="text-sm text-slate-500 mt-2">${progress}</p>
+            <div class="flex gap-2 mt-3 justify-end">
+                <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
+            </div>
+        `;
+        card.addEventListener("click", (e) => {
+            if (e.target.closest("[data-action]")) return;
+            loadInterview(interview.interview_id);
+        });
+        card.querySelector("[data-action='delete']").addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteInterview(interview.interview_id);
+        });
+        listEl.appendChild(card);
+    });
+}
+
+async function deleteInterview(interviewId) {
+    if (!confirm("Supprimer définitivement cet entretien ?")) return;
+    try {
+        const resp = await fetch(`/api/interviews/${interviewId}`, { method: "DELETE" });
+        if (!resp.ok) throw new Error("Erreur lors de la suppression.");
+        await loadOfferDetail(state.currentSessionId);
+    } catch (err) {
+        showError("interview-error", err.message);
+    }
+}
+
+function toggleAddInterviewForm() {
+    const form = document.getElementById("add-interview-form");
+    const btn = document.getElementById("btn-toggle-add-interview");
+    const willShow = form.classList.contains("hidden");
+    form.classList.toggle("hidden");
+    btn.textContent = willShow ? "− Annuler" : "+ Ajouter un entretien";
+}
+
+async function addInterview() {
+    hideError("interview-error");
+
+    const context = document.getElementById("interview-context").value.trim();
+    const language = document.getElementById("interview-language").value;
+
+    if (!context) {
+        showError("interview-error", "Veuillez indiquer le type d'entretien.");
         return;
     }
 
-    const btn = document.getElementById("btn-generate");
+    const btn = document.getElementById("btn-add-interview");
     btn.disabled = true;
     btn.textContent = "Génération en cours...";
 
     try {
-        const response = await fetch("/api/generate-questions", {
+        const response = await fetch(`/api/sessions/${state.currentSessionId}/interviews`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cv, job_offer: jobOffer, language, context }),
+            body: JSON.stringify({ context, language }),
         });
 
         const data = await response.json();
@@ -401,16 +607,47 @@ async function generateQuestions() {
             throw new Error(data.error || "Erreur lors de la génération.");
         }
 
-        applySessionData(data);
-        state.feedbacks = {};
-        renderQuestions();
-        showView("questions");
-        loadSessions();
+        document.getElementById("interview-context").value = "";
+        document.getElementById("interview-language").value = "fr";
+        document.getElementById("add-interview-form").classList.add("hidden");
+        document.getElementById("btn-toggle-add-interview").textContent = "+ Ajouter un entretien";
+
+        await loadOfferDetail(state.currentSessionId);
     } catch (err) {
-        showError("setup-error", err.message);
+        showError("interview-error", err.message);
     } finally {
         btn.disabled = false;
         btn.textContent = "Générer les questions";
+    }
+}
+
+async function loadInterview(interviewId) {
+    hideError("interview-error");
+
+    try {
+        const response = await fetch(`/api/interviews/${interviewId}`);
+        const data = await response.json();
+
+        if (response.status === 404) {
+            showError("interview-error", "Cet entretien n'existe plus.");
+            await loadOfferDetail(state.currentSessionId);
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(data.error || "Erreur lors du chargement de l'entretien.");
+        }
+
+        state.currentInterviewId = data.interview_id;
+        state.currentInterviewContext = data.context;
+        state.questions = data.questions || [];
+        state.feedbacks = data.feedbacks || {};
+        state.currentQuestionIndex = null;
+
+        renderQuestions();
+        showView("questions");
+    } catch (err) {
+        showError("interview-error", err.message);
     }
 }
 
@@ -693,7 +930,7 @@ async function sendMedia(audioBlob, durationSeconds, frames, videoBlob) {
     setNavigationLocked(true);
 
     const formData = new FormData();
-    formData.append("session_id", state.currentSessionId);
+    formData.append("interview_id", state.currentInterviewId);
     formData.append("question_index", state.currentQuestionIndex);
     formData.append("duration_seconds", durationSeconds.toFixed(1));
     formData.append("recording_mode", state.recordingMode);
@@ -716,7 +953,7 @@ async function sendMedia(audioBlob, durationSeconds, frames, videoBlob) {
         const data = await response.json();
 
         if (response.status === 404) {
-            showError("recording-error", "Session expirée. Retournez à l'accueil.");
+            showError("recording-error", "Entretien introuvable (serveur redémarré). Retournez à l'accueil.");
             document.getElementById("analysis-loading").classList.add("hidden");
             document.getElementById("recording-controls").classList.remove("hidden");
             await loadSessions();
@@ -783,15 +1020,24 @@ function displayFeedback(data) {
     }
 }
 
-document.getElementById("btn-generate").addEventListener("click", generateQuestions);
+document.getElementById("btn-create-offer").addEventListener("click", createOffer);
 document.getElementById("btn-record").addEventListener("click", toggleRecording);
 document.getElementById("btn-rerecord").addEventListener("click", startRerecording);
-document.getElementById("btn-back-home").addEventListener("click", goToSetup);
+document.getElementById("btn-back-home-offer").addEventListener("click", goToSetup);
 document.getElementById("nav-home").addEventListener("click", goToSetup);
+document.getElementById("btn-back-to-offer").addEventListener("click", goToOffer);
 document.getElementById("btn-back-to-questions").addEventListener("click", goToQuestions);
 document.getElementById("btn-back-questions-consult").addEventListener("click", goToQuestions);
 document.getElementById("btn-show-archived").addEventListener("click", showArchivedSection);
 document.getElementById("btn-hide-archived").addEventListener("click", hideArchivedSection);
+document.getElementById("btn-toggle-add-interview").addEventListener("click", toggleAddInterviewForm);
+document.getElementById("btn-add-interview").addEventListener("click", addInterview);
+document.getElementById("breadcrumb").addEventListener("click", (e) => {
+    const offerEl = e.target.closest("#breadcrumb-offer");
+    if (!offerEl || !state.currentSessionId) return;
+    e.stopPropagation();
+    startTitleEdit(offerEl, state.currentSessionId, () => loadSessions());
+});
 
 document.querySelectorAll('input[name="recording-mode"]').forEach((radio) => {
     radio.addEventListener("change", (e) => {
