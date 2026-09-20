@@ -458,7 +458,9 @@ async function toggleRecording() {
 
         showError(
             "recording-error",
-            "Impossible d'accéder au microphone. Vérifiez les permissions de votre navigateur."
+            state.recordingMode === "video"
+                ? "Impossible d'accéder à la caméra et au microphone. Vérifiez les permissions de votre navigateur."
+                : "Impossible d'accéder au microphone. Vérifiez les permissions de votre navigateur."
         );
     }
 }

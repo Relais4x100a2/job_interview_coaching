@@ -206,7 +206,7 @@ def create_app() -> Flask:
                     feedback["analysis_visual"] = visual_analysis
                 except Exception as exc:
                     logger.exception("Erreur lors de l'analyse visuelle")
-                    feedback["analysis_visual"] = f"Analyse visuelle indisponible : {exc}"
+                    feedback["analysis_visual"] = "Analyse visuelle indisponible."
 
             user_video_filename = f"user_{session_id}_{question_index}.webm"
             video_file = request.files.get("video")
