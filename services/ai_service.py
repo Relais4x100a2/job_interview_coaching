@@ -232,12 +232,16 @@ def analyze_answer(
     system_prompt = (
         "Tu es un coach en entretien d'embauche. Analyse la réponse du candidat "
         "et produis un feedback détaillé. "
-        f"Rédige ideal_answer_text en {lang_label}. "
+        "IMPORTANT : rédige analysis_content et analysis_form TOUJOURS en français, "
+        "même si l'entretien est en anglais. Ce sont des feedbacks pour le candidat francophone. "
+        "Chaque champ d'analyse doit être une chaîne de texte fluide (paragraphes), "
+        "PAS un objet JSON imbriqué. "
+        f"Rédige ideal_answer_text en {lang_label} (la langue de l'entretien). "
         "Réponds uniquement en JSON avec exactement ces clés : "
         "transcription, analysis_content, analysis_form, ideal_answer_text. "
-        "analysis_content : pertinence, éléments du CV omis ou mal valorisés "
-        "par rapport à l'offre. "
-        "analysis_form : syntaxe, grammaire, tics de langage, clarté, "
+        "analysis_content (en français) : pertinence de la réponse, éléments du CV "
+        "omis ou mal valorisés par rapport à l'offre. "
+        "analysis_form (en français) : syntaxe, grammaire, tics de langage, clarté, "
         f"débit estimé ({wpm} mots/minute sur {duration_seconds:.1f}s)."
     )
     user_prompt = (
@@ -301,7 +305,7 @@ def analyze_visual(
         "Analyse : expressions faciales, contact visuel (regarde-t-il la caméra ?), "
         "posture, gestes, tics corporels, niveau de confiance perçu. "
         "Donne des conseils concrets d'amélioration. "
-        f"Rédige ton analyse en {lang_label}."
+        "Rédige ton analyse TOUJOURS en français, même si l'entretien est en anglais."
     )
 
     image_parts = []
