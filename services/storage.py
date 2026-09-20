@@ -148,14 +148,13 @@ class InMemoryStorage:
                 "feedbacks": dict(session["feedbacks"]),
             }
 
-    def get_all_sessions(self) -> list[dict[str, Any]]:
-        """Retourne la liste des sessions, triées par date décroissante.
-
-        Returns:
-            Liste de résumés de sessions (sans CV ni offre complète).
-        """
+    def get_all_sessions(self, archived: bool = False) -> list[dict[str, Any]]:
+        """Retourne la liste des sessions, triées par date décroissante."""
         with self._lock:
-            sessions = list(self._sessions.values())
+            sessions = [
+                s for s in self._sessions.values()
+                if s.get("archived", False) == archived
+            ]
 
         sessions.sort(key=lambda s: s["created_at"], reverse=True)
         return [
@@ -168,6 +167,27 @@ class InMemoryStorage:
             }
             for session in sessions
         ]
+
+    def archive_session(self, session_id: str) -> None:
+        """Archive une session."""
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError(f"Session introuvable : {session_id}")
+            self._sessions[session_id]["archived"] = True
+
+    def unarchive_session(self, session_id: str) -> None:
+        """Désarchive une session."""
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError(f"Session introuvable : {session_id}")
+            self._sessions[session_id]["archived"] = False
+
+    def delete_session(self, session_id: str) -> None:
+        """Supprime définitivement une session."""
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError(f"Session introuvable : {session_id}")
+            del self._sessions[session_id]
 
 
 class SQLiteStorage:
@@ -224,6 +244,14 @@ class SQLiteStorage:
                 CREATE INDEX IF NOT EXISTS idx_sessions_created_at
                     ON sessions (created_at DESC);
             """)
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+            }
+            if "archived" not in columns:
+                conn.execute(
+                    "ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+                )
 
     @staticmethod
     def _row_to_session(row: sqlite3.Row) -> dict[str, Any]:
@@ -353,8 +381,11 @@ class SQLiteStorage:
             return None
         return self._row_to_session(row)
 
-    def get_all_sessions(self) -> list[dict[str, Any]]:
+    def get_all_sessions(self, archived: bool = False) -> list[dict[str, Any]]:
         """Retourne la liste des sessions, triées par date décroissante.
+
+        Args:
+            archived: Si True, retourne les sessions archivées.
 
         Returns:
             Liste de résumés de sessions (sans CV ni offre complète).
@@ -364,8 +395,10 @@ class SQLiteStorage:
                 """
                 SELECT session_id, offer_title, language, data, created_at
                 FROM sessions
+                WHERE archived = ?
                 ORDER BY created_at DESC
                 """,
+                (1 if archived else 0,),
             ).fetchall()
 
         return [
@@ -378,6 +411,36 @@ class SQLiteStorage:
             }
             for row in rows
         ]
+
+    def archive_session(self, session_id: str) -> None:
+        """Archive une session."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "UPDATE sessions SET archived = 1 WHERE session_id = ?",
+                (session_id,),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Session introuvable : {session_id}")
+
+    def unarchive_session(self, session_id: str) -> None:
+        """Désarchive une session."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "UPDATE sessions SET archived = 0 WHERE session_id = ?",
+                (session_id,),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Session introuvable : {session_id}")
+
+    def delete_session(self, session_id: str) -> None:
+        """Supprime définitivement une session."""
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM sessions WHERE session_id = ?",
+                (session_id,),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Session introuvable : {session_id}")
 
 
 def create_storage(

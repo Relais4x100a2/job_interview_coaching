@@ -209,18 +209,129 @@ function renderSessions(sessions) {
             ? `${session.context.slice(0, 60)}…`
             : session.context;
 
-        const card = document.createElement("button");
-        card.type = "button";
+        const card = document.createElement("div");
         card.className =
-            "text-left bg-slate-50 border border-slate-200 rounded-lg p-4 hover:ring-2 hover:ring-indigo-400 transition";
+            "text-left bg-slate-50 border border-slate-200 rounded-lg p-4 hover:ring-2 hover:ring-indigo-400 transition cursor-pointer";
         card.innerHTML = `
             <p class="font-medium text-slate-800">${session.offer_title}</p>
             <p class="text-xs text-slate-500 mt-1">${langLabel} · ${formatDate(session.created_at)}</p>
             <p class="text-sm text-slate-600 mt-2">${contextPreview}</p>
+            <div class="flex gap-2 mt-3 justify-end">
+                <button type="button" data-action="archive" class="text-xs text-slate-400 hover:text-amber-600 px-2 py-1 rounded hover:bg-amber-50 transition">Archiver</button>
+                <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
+            </div>
         `;
-        card.addEventListener("click", () => resumeSession(session.session_id));
+        card.addEventListener("click", (e) => {
+            if (e.target.closest("[data-action]")) return;
+            resumeSession(session.session_id);
+        });
+        card.querySelector("[data-action='archive']").addEventListener("click", (e) => {
+            e.stopPropagation();
+            archiveSession(session.session_id);
+        });
+        card.querySelector("[data-action='delete']").addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteSession(session.session_id);
+        });
         listEl.appendChild(card);
     });
+}
+
+function renderArchivedSessions(sessions) {
+    const listEl = document.getElementById("archived-list");
+    const emptyEl = document.getElementById("archived-empty");
+    listEl.innerHTML = "";
+
+    if (sessions.length === 0) {
+        emptyEl.classList.remove("hidden");
+        return;
+    }
+    emptyEl.classList.add("hidden");
+
+    sessions.forEach((session) => {
+        const langLabel = session.language === "fr" ? "Français" : "Anglais";
+        const contextPreview = session.context.length > 60
+            ? `${session.context.slice(0, 60)}…`
+            : session.context;
+
+        const card = document.createElement("div");
+        card.className =
+            "text-left bg-slate-50 border border-slate-200 rounded-lg p-4 transition";
+        card.innerHTML = `
+            <p class="font-medium text-slate-800">${session.offer_title}</p>
+            <p class="text-xs text-slate-500 mt-1">${langLabel} · ${formatDate(session.created_at)}</p>
+            <p class="text-sm text-slate-600 mt-2">${contextPreview}</p>
+            <div class="flex gap-2 mt-3 justify-end">
+                <button type="button" data-action="unarchive" class="text-xs text-indigo-500 hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-50 transition">Restaurer</button>
+                <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
+            </div>
+        `;
+        card.querySelector("[data-action='unarchive']").addEventListener("click", () => {
+            unarchiveSession(session.session_id);
+        });
+        card.querySelector("[data-action='delete']").addEventListener("click", () => {
+            deleteSession(session.session_id, true);
+        });
+        listEl.appendChild(card);
+    });
+}
+
+async function archiveSession(sessionId) {
+    try {
+        const resp = await fetch(`/api/sessions/${sessionId}/archive`, { method: "POST" });
+        if (!resp.ok) throw new Error("Erreur lors de l'archivage.");
+        await loadSessions();
+    } catch (err) {
+        showError("sessions-error", err.message);
+    }
+}
+
+async function unarchiveSession(sessionId) {
+    try {
+        const resp = await fetch(`/api/sessions/${sessionId}/unarchive`, { method: "POST" });
+        if (!resp.ok) throw new Error("Erreur lors de la restauration.");
+        await loadArchivedSessions();
+        await loadSessions();
+    } catch (err) {
+        showError("sessions-error", err.message);
+    }
+}
+
+async function deleteSession(sessionId, fromArchived = false) {
+    if (!confirm("Supprimer définitivement cette offre ?")) return;
+    try {
+        const resp = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+        if (!resp.ok) throw new Error("Erreur lors de la suppression.");
+        if (fromArchived) {
+            await loadArchivedSessions();
+        } else {
+            await loadSessions();
+        }
+    } catch (err) {
+        showError("sessions-error", err.message);
+    }
+}
+
+async function loadArchivedSessions() {
+    try {
+        const response = await fetch("/api/sessions?archived=true");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Erreur.");
+        renderArchivedSessions(data.sessions || []);
+    } catch (err) {
+        showError("sessions-error", err.message);
+    }
+}
+
+function showArchivedSection() {
+    document.getElementById("history-section").classList.add("hidden");
+    document.getElementById("archived-section").classList.remove("hidden");
+    loadArchivedSessions();
+}
+
+function hideArchivedSection() {
+    document.getElementById("archived-section").classList.add("hidden");
+    document.getElementById("history-section").classList.remove("hidden");
 }
 
 function applySessionData(data) {
@@ -679,6 +790,8 @@ document.getElementById("btn-back-home").addEventListener("click", goToSetup);
 document.getElementById("nav-home").addEventListener("click", goToSetup);
 document.getElementById("btn-back-to-questions").addEventListener("click", goToQuestions);
 document.getElementById("btn-back-questions-consult").addEventListener("click", goToQuestions);
+document.getElementById("btn-show-archived").addEventListener("click", showArchivedSection);
+document.getElementById("btn-hide-archived").addEventListener("click", hideArchivedSection);
 
 document.querySelectorAll('input[name="recording-mode"]').forEach((radio) => {
     radio.addEventListener("change", (e) => {

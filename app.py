@@ -99,7 +99,35 @@ def create_app() -> Flask:
     @app.get("/api/sessions")
     def list_sessions():
         """Retourne la liste des sessions enregistrées."""
-        return jsonify({"sessions": storage.get_all_sessions()})
+        archived = request.args.get("archived", "false").lower() == "true"
+        return jsonify({"sessions": storage.get_all_sessions(archived=archived)})
+
+    @app.post("/api/sessions/<session_id>/archive")
+    def archive_session(session_id: str):
+        """Archive une session."""
+        try:
+            storage.archive_session(session_id)
+        except KeyError:
+            raise NotFound("Session introuvable.")
+        return jsonify({"ok": True})
+
+    @app.post("/api/sessions/<session_id>/unarchive")
+    def unarchive_session(session_id: str):
+        """Désarchive une session."""
+        try:
+            storage.unarchive_session(session_id)
+        except KeyError:
+            raise NotFound("Session introuvable.")
+        return jsonify({"ok": True})
+
+    @app.delete("/api/sessions/<session_id>")
+    def delete_session(session_id: str):
+        """Supprime définitivement une session."""
+        try:
+            storage.delete_session(session_id)
+        except KeyError:
+            raise NotFound("Session introuvable.")
+        return jsonify({"ok": True})
 
     @app.get("/api/sessions/<session_id>")
     def get_session_detail(session_id: str):
