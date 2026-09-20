@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-LANGUAGE_DISPLAY = {"fr": "Français", "en": "English"}
+VALID_LANGUAGES = ("fr", "en")
 
 
 def _build_offer_title(job_offer: str, created_at: datetime) -> str:
@@ -38,6 +38,21 @@ def _build_offer_title(job_offer: str, created_at: datetime) -> str:
 
     date_str = created_at.strftime("%d/%m/%Y")
     return f"Offre du {date_str}"
+
+
+def _validate_language(language: str) -> None:
+    """Vérifie que la langue est une valeur supportée.
+
+    Args:
+        language: Code langue à valider.
+
+    Raises:
+        ValueError: Si la langue n'est pas 'fr' ou 'en'.
+    """
+    if language not in VALID_LANGUAGES:
+        raise ValueError(
+            f"Langue invalide : {language!r} (attendu : {VALID_LANGUAGES})"
+        )
 
 
 def _deserialize_feedbacks(raw: str) -> dict[int, dict[str, Any]]:
@@ -197,7 +212,9 @@ class InMemoryStorage:
 
         Raises:
             KeyError: Si l'offre n'existe pas.
+            ValueError: Si la langue n'est pas 'fr' ou 'en'.
         """
+        _validate_language(language)
         interview_id = str(uuid.uuid4())
         with self._lock:
             if session_id not in self._sessions:
@@ -645,7 +662,9 @@ class SQLiteStorage:
 
         Raises:
             KeyError: Si l'offre n'existe pas.
+            ValueError: Si la langue n'est pas 'fr' ou 'en'.
         """
+        _validate_language(language)
         interview_id = str(uuid.uuid4())
         created_at = datetime.now(UTC).isoformat()
         with self._connection() as conn:

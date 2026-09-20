@@ -1,6 +1,4 @@
 """Tests for the storage layer with multi-interview support."""
-from pathlib import Path
-
 import pytest
 
 from services.storage import InMemoryStorage, SQLiteStorage
