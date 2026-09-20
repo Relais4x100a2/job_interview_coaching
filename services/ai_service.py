@@ -305,7 +305,9 @@ def analyze_visual(
         "Analyse : expressions faciales, contact visuel (regarde-t-il la caméra ?), "
         "posture, gestes, tics corporels, niveau de confiance perçu. "
         "Donne des conseils concrets d'amélioration. "
-        "Rédige ton analyse TOUJOURS en français, même si l'entretien est en anglais."
+        "OBLIGATION : tu DOIS rédiger TOUTE ton analyse en français. "
+        "Peu importe la langue de la question ou de l'entretien, "
+        "ta réponse est intégralement en français."
     )
 
     image_parts = []
@@ -317,7 +319,10 @@ def analyze_visual(
         })
 
     user_content = [
-        {"type": "text", "text": f"Question posée au candidat : {question}"},
+        {"type": "text", "text": (
+            f"Question posée au candidat : {question}\n\n"
+            "Rappel : rédige ton analyse entièrement en français."
+        )},
         *image_parts,
     ]
 
