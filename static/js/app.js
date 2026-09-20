@@ -741,8 +741,8 @@ async function sendMedia(audioBlob, durationSeconds, frames, videoBlob) {
 
 function displayFeedback(data) {
     document.getElementById("feedback-transcription").textContent = data.transcription;
-    document.getElementById("feedback-content").textContent = data.analysis_content;
-    document.getElementById("feedback-form").textContent = data.analysis_form;
+    document.getElementById("feedback-content").innerHTML = marked.parse(data.analysis_content || "");
+    document.getElementById("feedback-form").innerHTML = marked.parse(data.analysis_form || "");
     document.getElementById("feedback-ideal").textContent = data.ideal_answer_text;
 
     if (data.user_audio_url) {
@@ -765,7 +765,7 @@ function displayFeedback(data) {
                 framesContainer.appendChild(img);
             });
         }
-        document.getElementById("feedback-visual").textContent = data.analysis_visual;
+        document.getElementById("feedback-visual").innerHTML = marked.parse(data.analysis_visual || "");
         visualBlock.classList.remove("hidden");
     } else {
         visualBlock.classList.add("hidden");

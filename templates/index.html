@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Entraînement Entretien</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .prose-feedback h1, .prose-feedback h2, .prose-feedback h3,
+        .prose-feedback h4 { font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+        .prose-feedback h3 { font-size: 0.95rem; }
+        .prose-feedback ul, .prose-feedback ol { padding-left: 1.25rem; margin: 0.25rem 0; }
+        .prose-feedback ul { list-style: disc; }
+        .prose-feedback ol { list-style: decimal; }
+        .prose-feedback li { margin: 0.15rem 0; }
+        .prose-feedback p { margin: 0.35rem 0; }
+        .prose-feedback strong { font-weight: 600; }
+    </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
     <div class="max-w-4xl mx-auto px-4 py-8">
@@ -163,16 +175,16 @@
                 </div>
                 <div>
                     <h3 class="font-semibold text-slate-700 mb-1">Analyse du fond</h3>
-                    <p id="feedback-content" class="text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                    <div id="feedback-content" class="prose-feedback text-slate-600 bg-slate-50 p-3 rounded-lg"></div>
                 </div>
                 <div>
                     <h3 class="font-semibold text-slate-700 mb-1">Analyse de la forme</h3>
-                    <p id="feedback-form" class="text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                    <div id="feedback-form" class="prose-feedback text-slate-600 bg-slate-50 p-3 rounded-lg"></div>
                 </div>
                 <div id="feedback-visual-block" class="hidden">
                     <h3 class="font-semibold text-slate-700 mb-1">Analyse du non-verbal</h3>
                     <div id="feedback-frames" class="flex gap-2 overflow-x-auto py-2"></div>
-                    <p id="feedback-visual" class="text-slate-600 bg-amber-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                    <div id="feedback-visual" class="prose-feedback text-slate-600 bg-amber-50 p-3 rounded-lg"></div>
                 </div>
                 <div>
                     <h3 class="font-semibold text-slate-700 mb-1">Réponse idéale</h3>
