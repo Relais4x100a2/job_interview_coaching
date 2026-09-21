@@ -62,7 +62,12 @@ def test_migration_removes_context_from_data(tmp_path):
     old_sid = _create_old_schema_db(db_path)
 
     storage = SQLiteStorage(db_path)
-    session = storage.get_session(old_sid)
-    assert "context" not in {"cv", "job_offer"} or True  # data should only have cv and job_offer
-    assert session["cv"] == "Old CV"
-    assert session["job_offer"] == "Old Offer"
+
+    # Read the DB directly to check the data JSON column
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT data FROM sessions WHERE session_id = ?", (old_sid,)).fetchone()
+    conn.close()
+    data = json.loads(row[0])
+    assert "context" not in data
+    assert "cv" in data
+    assert "job_offer" in data
