@@ -189,6 +189,41 @@ def generate_questions(
     return [intro_q] + other_questions[:6]
 
 
+def format_offer_content(cv: str, job_offer: str) -> tuple[str, str]:
+    """Reformate le CV et l'offre d'emploi en Markdown structuré.
+
+    Args:
+        cv: Contenu brut du CV.
+        job_offer: Contenu brut de l'offre d'emploi.
+
+    Returns:
+        Tuple (cv_markdown, job_offer_markdown).
+    """
+    system_prompt = (
+        "Tu reformates des documents de candidature en Markdown propre et bien "
+        "structuré (titres avec les bons niveaux de hiérarchie, listes à puces "
+        "quand pertinent). "
+        "Conserve la langue d'origine de chaque document et tout le contenu "
+        "substantiel (compétences, expériences, exigences, responsabilités, "
+        "conditions). N'invente et ne déduis aucune information absente du texte "
+        "source. "
+        "Supprime en revanche ce qui n'a pas de lien évident avec le poste ou la "
+        "candidature : discours RSE / mission d'entreprise génériques, sections "
+        "\"qui sommes-nous\", mentions légales sans rapport avec le poste. "
+        'Réponds uniquement en JSON avec exactement ces clés : "cv", "job_offer".'
+    )
+    user_prompt = f"CV :\n{cv}\n\nOffre d'emploi :\n{job_offer}"
+
+    raw = _call_llm(system_prompt, user_prompt)
+    data = _parse_json_response(raw)
+
+    for key in ("cv", "job_offer"):
+        if key not in data:
+            raise ValueError(f"Clé manquante dans la réponse LLM : {key}")
+
+    return str(data["cv"]), str(data["job_offer"])
+
+
 def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
     """Transcrit un fichier audio en texte via Whisper.
 

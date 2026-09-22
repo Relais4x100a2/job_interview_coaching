@@ -17,8 +17,9 @@ def client():
         yield c
 
 
-def _create_offer(client):
-    resp = client.post("/api/sessions", json={"cv": "Mon CV", "job_offer": "Offre Python"})
+def _create_offer(client, cv="Mon CV", job_offer="Offre Python"):
+    with patch("services.ai_service.format_offer_content", return_value=(cv, job_offer)):
+        resp = client.post("/api/sessions", json={"cv": cv, "job_offer": job_offer})
     assert resp.status_code == 200
     return resp.get_json()
 
@@ -42,6 +43,35 @@ def test_create_offer(client):
 def test_create_offer_missing_cv(client):
     resp = client.post("/api/sessions", json={"job_offer": "Offre"})
     assert resp.status_code == 400
+
+
+def test_create_offer_uses_formatted_markdown(client):
+    with patch(
+        "services.ai_service.format_offer_content",
+        return_value=("# CV formaté", "# Offre formatée"),
+    ) as mock_format:
+        resp = client.post("/api/sessions", json={"cv": "CV brut", "job_offer": "Offre brute"})
+    assert resp.status_code == 200
+    mock_format.assert_called_once_with("CV brut", "Offre brute")
+
+    session_id = resp.get_json()["session_id"]
+    detail = client.get(f"/api/sessions/{session_id}").get_json()
+    assert detail["cv"] == "# CV formaté"
+    assert detail["job_offer"] == "# Offre formatée"
+
+
+def test_create_offer_falls_back_to_raw_text_on_formatting_failure(client):
+    with patch(
+        "services.ai_service.format_offer_content",
+        side_effect=RuntimeError("Aucune clé API configurée."),
+    ):
+        resp = client.post("/api/sessions", json={"cv": "CV brut", "job_offer": "Offre brute"})
+    assert resp.status_code == 200
+
+    session_id = resp.get_json()["session_id"]
+    detail = client.get(f"/api/sessions/{session_id}").get_json()
+    assert detail["cv"] == "CV brut"
+    assert detail["job_offer"] == "Offre brute"
 
 
 def test_add_interview(client):
@@ -69,6 +99,44 @@ def test_get_session_detail_with_interviews(client):
     resp = client.get(f"/api/sessions/{offer['session_id']}")
     data = resp.get_json()
     assert len(data["interviews"]) == 2
+
+
+def test_get_session_detail_includes_cv_and_job_offer(client):
+    offer = _create_offer(client, cv="Mon CV", job_offer="Offre Python")
+    resp = client.get(f"/api/sessions/{offer['session_id']}")
+    data = resp.get_json()
+    assert data["cv"] == "Mon CV"
+    assert data["job_offer"] == "Offre Python"
+
+
+def test_update_session_content(client):
+    offer = _create_offer(client)
+    resp = client.patch(
+        f"/api/sessions/{offer['session_id']}",
+        json={"cv": "CV modifié", "job_offer": "Offre modifiée"},
+    )
+    assert resp.status_code == 200
+
+    detail = client.get(f"/api/sessions/{offer['session_id']}").get_json()
+    assert detail["cv"] == "CV modifié"
+    assert detail["job_offer"] == "Offre modifiée"
+
+
+def test_update_session_content_unknown_session(client):
+    resp = client.patch(
+        "/api/sessions/unknown",
+        json={"cv": "CV", "job_offer": "Offre"},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_session_content_missing_cv(client):
+    offer = _create_offer(client)
+    resp = client.patch(
+        f"/api/sessions/{offer['session_id']}",
+        json={"job_offer": "Offre"},
+    )
+    assert resp.status_code == 400
 
 
 def test_get_interview_detail(client):

@@ -65,7 +65,16 @@ def create_app() -> Flask:
         if not job_offer:
             raise BadRequest("Le champ 'job_offer' est obligatoire.")
 
-        session_id = storage.create_session(cv=cv, job_offer=job_offer)
+        raw_cv, raw_job_offer = cv, job_offer
+        try:
+            cv, job_offer = ai_service.format_offer_content(cv, job_offer)
+        except Exception:
+            logger.warning("Échec du formatage Markdown du CV/offre, texte brut conservé", exc_info=True)
+
+        # Le titre auto-généré doit rester basé sur le texte brut (pas le Markdown formaté).
+        session_id = storage.create_session(cv=raw_cv, job_offer=raw_job_offer)
+        if (cv, job_offer) != (raw_cv, raw_job_offer):
+            storage.update_offer_content(session_id, cv=cv, job_offer=job_offer)
         if offer_title:
             storage.update_offer_title(session_id, offer_title)
 
@@ -196,9 +205,27 @@ def create_app() -> Flask:
         return jsonify({
             "session_id": session["session_id"],
             "offer_title": session["offer_title"],
+            "cv": session["cv"],
+            "job_offer": session["job_offer"],
             "created_at": session["created_at"].isoformat(),
             "interviews": interviews,
         })
+
+    @app.patch("/api/sessions/<session_id>")
+    def update_session_content(session_id: str):
+        """Met à jour le CV et l'offre d'emploi d'une session."""
+        data = request.get_json(silent=True) or {}
+        cv = (data.get("cv") or "").strip()
+        job_offer = (data.get("job_offer") or "").strip()
+        if not cv:
+            raise BadRequest("Le champ 'cv' est obligatoire.")
+        if not job_offer:
+            raise BadRequest("Le champ 'job_offer' est obligatoire.")
+        try:
+            storage.update_offer_content(session_id, cv=cv, job_offer=job_offer)
+        except KeyError:
+            raise NotFound("Session introuvable.")
+        return jsonify({"ok": True, "cv": cv, "job_offer": job_offer})
 
     @app.post("/api/analyze-answer")
     def analyze_answer():

@@ -169,6 +169,14 @@ class InMemoryStorage:
                 raise KeyError(f"Session introuvable : {session_id}")
             self._sessions[session_id]["offer_title"] = title
 
+    def update_offer_content(self, session_id: str, cv: str, job_offer: str) -> None:
+        """Met à jour le CV et l'offre d'emploi d'une session."""
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError(f"Session introuvable : {session_id}")
+            self._sessions[session_id]["cv"] = cv
+            self._sessions[session_id]["job_offer"] = job_offer
+
     def archive_session(self, session_id: str) -> None:
         """Archive une offre."""
         with self._lock:
@@ -616,6 +624,23 @@ class SQLiteStorage:
             )
             if cursor.rowcount == 0:
                 raise KeyError(f"Session introuvable : {session_id}")
+
+    def update_offer_content(self, session_id: str, cv: str, job_offer: str) -> None:
+        """Met à jour le CV et l'offre d'emploi d'une session."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT data FROM sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Session introuvable : {session_id}")
+            data = json.loads(row["data"])
+            data["cv"] = cv
+            data["job_offer"] = job_offer
+            conn.execute(
+                "UPDATE sessions SET data = ? WHERE session_id = ?",
+                (json.dumps(data, ensure_ascii=False), session_id),
+            )
 
     def archive_session(self, session_id: str) -> None:
         """Archive une offre."""

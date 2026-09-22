@@ -91,6 +91,19 @@ def test_get_all_sessions_shows_interview_count(store):
     assert sessions[0]["interview_count"] == 2
 
 
+def test_update_offer_content(store):
+    sid = store.create_session(cv="CV brut", job_offer="Offre brute")
+    store.update_offer_content(sid, cv="# CV", job_offer="# Offre")
+    session = store.get_session(sid)
+    assert session["cv"] == "# CV"
+    assert session["job_offer"] == "# Offre"
+
+
+def test_update_offer_content_unknown_session(store):
+    with pytest.raises(KeyError):
+        store.update_offer_content("unknown", cv="CV", job_offer="Offre")
+
+
 def test_session_progress_counts(store):
     sid = store.create_session(cv="CV", job_offer="Offre")
     iid = store.create_interview(sid, context="RH", language="fr")
@@ -137,3 +150,16 @@ def test_sqlite_get_interview_with_session(sqlite_store):
     result = sqlite_store.get_interview_with_session(iid)
     assert result["cv"] == "Mon CV"
     assert result["context"] == "RH"
+
+
+def test_sqlite_update_offer_content(sqlite_store):
+    sid = sqlite_store.create_session(cv="CV brut", job_offer="Offre brute")
+    sqlite_store.update_offer_content(sid, cv="# CV", job_offer="# Offre")
+    session = sqlite_store.get_session(sid)
+    assert session["cv"] == "# CV"
+    assert session["job_offer"] == "# Offre"
+
+
+def test_sqlite_update_offer_content_unknown_session(sqlite_store):
+    with pytest.raises(KeyError):
+        sqlite_store.update_offer_content("unknown", cv="CV", job_offer="Offre")

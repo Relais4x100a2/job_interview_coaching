@@ -3,6 +3,8 @@
 const state = {
     currentSessionId: null,
     offerTitle: null,
+    offerCv: "",
+    offerJobOffer: "",
     interviews: [],
     currentInterviewId: null,
     currentInterviewContext: null,
@@ -512,10 +514,94 @@ async function loadOfferDetail(sessionId) {
         state.currentSessionId = data.session_id;
         state.offerTitle = data.offer_title;
         state.interviews = data.interviews || [];
+        state.offerCv = data.cv || "";
+        state.offerJobOffer = data.job_offer || "";
         renderInterviews();
+        renderOfferContent();
+        collapseOfferContent();
         updateBreadcrumb(getCurrentView());
     } catch (err) {
         showError("interview-error", err.message);
+    }
+}
+
+function renderOfferContent() {
+    document.getElementById("offer-content-cv").innerHTML = marked.parse(state.offerCv || "");
+    document.getElementById("offer-content-job-offer").innerHTML = marked.parse(state.offerJobOffer || "");
+}
+
+function collapseOfferContent() {
+    document.getElementById("offer-content-body").classList.add("hidden");
+    document.getElementById("offer-content-chevron").textContent = "▸";
+    cancelEditOfferContent();
+}
+
+function toggleOfferContent() {
+    const body = document.getElementById("offer-content-body");
+    const chevron = document.getElementById("offer-content-chevron");
+    const collapsed = body.classList.toggle("hidden");
+    chevron.textContent = collapsed ? "▸" : "▾";
+}
+
+function startEditOfferContent() {
+    hideError("offer-content-error");
+    document.getElementById("offer-content-cv").classList.add("hidden");
+    document.getElementById("offer-content-job-offer").classList.add("hidden");
+
+    const cvInput = document.getElementById("offer-content-cv-input");
+    const jobOfferInput = document.getElementById("offer-content-job-offer-input");
+    cvInput.value = state.offerCv || "";
+    jobOfferInput.value = state.offerJobOffer || "";
+    cvInput.classList.remove("hidden");
+    jobOfferInput.classList.remove("hidden");
+
+    document.getElementById("btn-edit-offer-content").classList.add("hidden");
+    const actions = document.getElementById("offer-content-edit-actions");
+    actions.classList.remove("hidden");
+    actions.classList.add("flex");
+}
+
+function cancelEditOfferContent() {
+    hideError("offer-content-error");
+    document.getElementById("offer-content-cv").classList.remove("hidden");
+    document.getElementById("offer-content-job-offer").classList.remove("hidden");
+    document.getElementById("offer-content-cv-input").classList.add("hidden");
+    document.getElementById("offer-content-job-offer-input").classList.add("hidden");
+    document.getElementById("btn-edit-offer-content").classList.remove("hidden");
+    const actions = document.getElementById("offer-content-edit-actions");
+    actions.classList.add("hidden");
+    actions.classList.remove("flex");
+}
+
+async function saveOfferContent() {
+    const cv = document.getElementById("offer-content-cv-input").value.trim();
+    const jobOffer = document.getElementById("offer-content-job-offer-input").value.trim();
+
+    if (!cv || !jobOffer) {
+        showError("offer-content-error", "Le CV et l'offre ne peuvent pas être vides.");
+        return;
+    }
+
+    const saveBtn = document.getElementById("btn-save-offer-content");
+    saveBtn.disabled = true;
+    try {
+        const response = await fetch(`/api/sessions/${state.currentSessionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cv, job_offer: jobOffer }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Erreur lors de la mise à jour.");
+        }
+        state.offerCv = cv;
+        state.offerJobOffer = jobOffer;
+        renderOfferContent();
+        cancelEditOfferContent();
+    } catch (err) {
+        showError("offer-content-error", err.message);
+    } finally {
+        saveBtn.disabled = false;
     }
 }
 
@@ -1031,6 +1117,10 @@ document.getElementById("btn-back-questions-consult").addEventListener("click", 
 document.getElementById("btn-show-archived").addEventListener("click", showArchivedSection);
 document.getElementById("btn-hide-archived").addEventListener("click", hideArchivedSection);
 document.getElementById("btn-toggle-add-interview").addEventListener("click", toggleAddInterviewForm);
+document.getElementById("btn-toggle-offer-content").addEventListener("click", toggleOfferContent);
+document.getElementById("btn-edit-offer-content").addEventListener("click", startEditOfferContent);
+document.getElementById("btn-save-offer-content").addEventListener("click", saveOfferContent);
+document.getElementById("btn-cancel-offer-content").addEventListener("click", cancelEditOfferContent);
 document.getElementById("btn-add-interview").addEventListener("click", addInterview);
 document.getElementById("breadcrumb").addEventListener("click", (e) => {
     const offerEl = e.target.closest("#breadcrumb-offer");

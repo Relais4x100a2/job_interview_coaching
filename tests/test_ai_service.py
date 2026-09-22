@@ -46,3 +46,29 @@ def test_analyze_visual_empty_frames_raises(mock_client_fn):
         assert False, "Should have raised ValueError"
     except ValueError as exc:
         assert "frame" in str(exc).lower()
+
+
+@patch.object(ai_service, "_call_llm")
+def test_format_offer_content_returns_markdown_tuple(mock_call_llm):
+    mock_call_llm.return_value = (
+        '{"cv": "# Mon CV", "job_offer": "# Offre Python"}'
+    )
+
+    cv_md, job_offer_md = ai_service.format_offer_content(
+        cv="Mon CV brut", job_offer="Offre Python brute"
+    )
+
+    assert cv_md == "# Mon CV"
+    assert job_offer_md == "# Offre Python"
+    mock_call_llm.assert_called_once()
+
+
+@patch.object(ai_service, "_call_llm")
+def test_format_offer_content_missing_key_raises(mock_call_llm):
+    mock_call_llm.return_value = '{"cv": "# Mon CV"}'
+
+    try:
+        ai_service.format_offer_content(cv="CV", job_offer="Offre")
+        assert False, "Should have raised ValueError"
+    except ValueError as exc:
+        assert "job_offer" in str(exc)
