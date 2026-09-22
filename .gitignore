@@ -7,6 +7,8 @@ dist/
 build/
 static/audio/*
 !static/audio/.gitkeep
+static/video/*
+!static/video/.gitkeep
 .pytest_cache/
 .ruff_cache/
 *.mp3
