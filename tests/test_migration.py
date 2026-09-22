@@ -3,7 +3,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
 from services.storage import SQLiteStorage
 
 
@@ -61,7 +60,7 @@ def test_migration_removes_context_from_data(tmp_path):
     db_path = tmp_path / "migrate.db"
     old_sid = _create_old_schema_db(db_path)
 
-    storage = SQLiteStorage(db_path)
+    SQLiteStorage(db_path)
 
     # Read the DB directly to check the data JSON column
     conn = sqlite3.connect(db_path)

@@ -338,8 +338,6 @@ def analyze_visual(
     if not frames:
         raise ValueError("Au moins une frame est requise pour l'analyse visuelle.")
 
-    lang_label = LANGUAGE_LABELS.get(language, language)
-
     system_prompt = (
         "Tu es un coach expert en communication non-verbale pour les entretiens "
         "d'embauche. On te fournit des captures d'écran extraites de la vidéo d'un "

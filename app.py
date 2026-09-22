@@ -318,7 +318,7 @@ def create_app() -> Flask:
                         language=interview["language"],
                     )
                     feedback["analysis_visual"] = visual_analysis
-                except Exception as exc:
+                except Exception:
                     logger.exception("Erreur lors de l'analyse visuelle")
                     feedback["analysis_visual"] = "Analyse visuelle indisponible."
 
