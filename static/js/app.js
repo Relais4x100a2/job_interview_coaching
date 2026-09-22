@@ -1104,11 +1104,67 @@ function displayFeedback(data) {
         userVideo.classList.add("hidden");
         userAudio.classList.remove("hidden");
     }
+
+    hideError("neutral-answer-error");
+    const neutralBlock = document.getElementById("neutral-answer-block");
+    const neutralBtn = document.getElementById("btn-neutral-answer");
+    if (data.neutral_answer_text) {
+        document.getElementById("feedback-neutral").textContent = data.neutral_answer_text;
+        if (data.neutral_audio_url) {
+            document.getElementById("neutral-audio").src = `${data.neutral_audio_url}?t=${Date.now()}`;
+        }
+        neutralBlock.classList.remove("hidden");
+        neutralBtn.textContent = "Régénérer la réponse neutre";
+    } else {
+        neutralBlock.classList.add("hidden");
+        neutralBtn.textContent = "Voir une réponse neutre basée sur le CV/l'offre";
+    }
+    neutralBtn.disabled = false;
+}
+
+async function generateNeutralAnswer() {
+    const btn = document.getElementById("btn-neutral-answer");
+    hideError("neutral-answer-error");
+    btn.disabled = true;
+    const previousLabel = btn.textContent;
+    btn.textContent = "Génération en cours...";
+
+    try {
+        const response = await fetch("/api/generate-neutral-answer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                interview_id: state.currentInterviewId,
+                question_index: state.currentQuestionIndex,
+            }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Erreur lors de la génération.");
+        }
+
+        document.getElementById("feedback-neutral").textContent = data.neutral_answer_text;
+        document.getElementById("neutral-audio").src = `${data.neutral_audio_url}?t=${Date.now()}`;
+        document.getElementById("neutral-answer-block").classList.remove("hidden");
+
+        const feedback = state.feedbacks[state.currentQuestionIndex];
+        if (feedback) {
+            feedback.neutral_answer_text = data.neutral_answer_text;
+            feedback.neutral_audio_url = data.neutral_audio_url;
+        }
+        btn.textContent = "Régénérer la réponse neutre";
+    } catch (err) {
+        showError("neutral-answer-error", err.message);
+        btn.textContent = previousLabel;
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 document.getElementById("btn-create-offer").addEventListener("click", createOffer);
 document.getElementById("btn-record").addEventListener("click", toggleRecording);
 document.getElementById("btn-rerecord").addEventListener("click", startRerecording);
+document.getElementById("btn-neutral-answer").addEventListener("click", generateNeutralAnswer);
 document.getElementById("btn-back-home-offer").addEventListener("click", goToSetup);
 document.getElementById("nav-home").addEventListener("click", goToSetup);
 document.getElementById("btn-back-to-offer").addEventListener("click", goToOffer);

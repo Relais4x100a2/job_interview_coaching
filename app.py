@@ -338,6 +338,58 @@ def create_app() -> Flask:
 
         return jsonify(feedback)
 
+    @app.post("/api/generate-neutral-answer")
+    def generate_neutral_answer():
+        """Génère une réponse idéale neutre (CV/offre) pour une question donnée."""
+        data = request.get_json(silent=True) or {}
+        interview_id = (data.get("interview_id") or "").strip()
+        question_index_raw = data.get("question_index")
+
+        if not interview_id:
+            raise BadRequest("Le champ 'interview_id' est obligatoire.")
+        if question_index_raw is None:
+            raise BadRequest("Le champ 'question_index' est obligatoire.")
+
+        try:
+            question_index = int(question_index_raw)
+        except (TypeError, ValueError) as exc:
+            raise BadRequest("question_index invalide.") from exc
+
+        interview = storage.get_interview_with_session(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
+
+        questions = interview.get("questions", [])
+        if question_index < 0 or question_index >= len(questions):
+            raise BadRequest("Index de question invalide.")
+
+        try:
+            neutral_text = ai_service.generate_neutral_ideal_answer(
+                question=questions[question_index],
+                cv=interview["cv"],
+                job_offer=interview["job_offer"],
+                context=interview["context"],
+                language=interview["language"],
+            )
+            mp3_bytes = ai_service.synthesize_speech(neutral_text)
+        except Exception as exc:
+            logger.exception("Erreur lors de la génération de la réponse neutre")
+            return jsonify({"error": str(exc)}), 500
+
+        audio_filename = f"neutral_{interview_id}_{question_index}.mp3"
+        (AUDIO_DIR / audio_filename).write_bytes(mp3_bytes)
+        audio_url = f"/static/audio/{audio_filename}"
+
+        feedback = storage.get_interview(interview_id)["feedbacks"].get(question_index, {})
+        feedback["neutral_answer_text"] = neutral_text
+        feedback["neutral_audio_url"] = audio_url
+        storage.save_feedback(interview_id, question_index, feedback)
+
+        return jsonify({
+            "neutral_answer_text": neutral_text,
+            "neutral_audio_url": audio_url,
+        })
+
     @app.errorhandler(BadRequest)
     def handle_bad_request(exc: BadRequest):
         """Retourne une erreur 400 en JSON."""

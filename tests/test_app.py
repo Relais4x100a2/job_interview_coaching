@@ -248,6 +248,87 @@ def test_list_sessions_shows_interview_count(client):
     assert sessions[0]["interview_count"] >= 1
 
 
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.generate_neutral_ideal_answer", return_value="Réponse neutre.")
+def test_generate_neutral_answer(mock_generate, mock_tts, client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/generate-neutral-answer",
+        json={"interview_id": itw["interview_id"], "question_index": 0},
+    )
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["neutral_answer_text"] == "Réponse neutre."
+    assert "neutral_audio_url" in data
+    mock_generate.assert_called_once()
+
+
+def test_generate_neutral_answer_persists_on_feedback(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    with (
+        patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
+        patch(
+            "services.ai_service.analyze_answer",
+            return_value={
+                "transcription": "Réponse",
+                "analysis_content": "Bon",
+                "analysis_form": "OK",
+                "ideal_answer_text": "Idéal",
+            },
+        ),
+        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+    ):
+        client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": itw["interview_id"],
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    with (
+        patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
+        patch("services.ai_service.generate_neutral_ideal_answer", return_value="Réponse neutre."),
+    ):
+        client.post(
+            "/api/generate-neutral-answer",
+            json={"interview_id": itw["interview_id"], "question_index": 0},
+        )
+
+    detail = client.get(f"/api/interviews/{itw['interview_id']}").get_json()
+    feedback = detail["feedbacks"]["0"] if "0" in detail["feedbacks"] else detail["feedbacks"][0]
+    assert feedback["ideal_answer_text"] == "Idéal"
+    assert feedback["neutral_answer_text"] == "Réponse neutre."
+
+
+def test_generate_neutral_answer_unknown_interview(client):
+    resp = client.post(
+        "/api/generate-neutral-answer",
+        json={"interview_id": "unknown", "question_index": 0},
+    )
+    assert resp.status_code == 404
+
+
+def test_generate_neutral_answer_invalid_question_index(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/generate-neutral-answer",
+        json={"interview_id": itw["interview_id"], "question_index": 99},
+    )
+    assert resp.status_code == 400
+
+
 def test_generate_questions_endpoint_removed(client):
     resp = client.post(
         "/api/generate-questions",

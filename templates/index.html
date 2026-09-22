@@ -259,6 +259,16 @@
                     <h3 class="font-semibold text-slate-700 mb-1">Réponse idéale</h3>
                     <p id="feedback-ideal" class="text-slate-600 bg-indigo-50 p-3 rounded-lg whitespace-pre-wrap"></p>
                     <audio id="ideal-audio" controls class="w-full mt-3"></audio>
+                    <button id="btn-neutral-answer" type="button"
+                        class="mt-3 text-sm text-indigo-600 hover:underline">
+                        Voir une réponse neutre basée sur le CV/l'offre
+                    </button>
+                    <div id="neutral-answer-block" class="hidden mt-3">
+                        <h3 class="font-semibold text-slate-700 mb-1">Réponse neutre (CV/offre)</h3>
+                        <p id="feedback-neutral" class="text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                        <audio id="neutral-audio" controls class="w-full mt-3"></audio>
+                    </div>
+                    <p id="neutral-answer-error" class="text-red-600 text-sm mt-2 hidden"></p>
                 </div>
                 <div class="flex gap-3 pt-2">
                     <button id="btn-rerecord" type="button"
