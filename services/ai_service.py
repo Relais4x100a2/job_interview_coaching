@@ -287,8 +287,13 @@ def analyze_answer(
         "préciser des compétences, jamais pour remplacer le vécu du candidat par "
         "une réponse générique et impersonnelle. Le résultat doit rester à la "
         "première personne et sonner comme ce candidat, pas comme une réponse type. "
+        f"Pour ideal_plan_text (en {lang_label}) : résume en 3 à 5 points la "
+        "structure de cette réponse idéale, rédigé en Markdown à puces (une ligne "
+        "commençant par '- ' par point), sans reprendre le texte intégral de la "
+        "réponse. "
         "Réponds uniquement en JSON avec exactement ces clés : "
-        "transcription, analysis_content, analysis_form, ideal_answer_text. "
+        "transcription, analysis_content, analysis_form, ideal_answer_text, "
+        "ideal_plan_text. "
         "analysis_content (en français) : pertinence de la réponse, éléments du CV "
         "omis ou mal valorisés par rapport à l'offre. "
         "analysis_form (en français) : syntaxe, grammaire, tics de langage, clarté, "
@@ -312,6 +317,7 @@ def analyze_answer(
         "analysis_content",
         "analysis_form",
         "ideal_answer_text",
+        "ideal_plan_text",
     )
     for key in required_keys:
         if key not in data:
@@ -322,6 +328,7 @@ def analyze_answer(
         "analysis_content": str(data["analysis_content"]),
         "analysis_form": str(data["analysis_form"]),
         "ideal_answer_text": str(data["ideal_answer_text"]),
+        "ideal_plan_text": str(data["ideal_plan_text"]),
     }
 
 
