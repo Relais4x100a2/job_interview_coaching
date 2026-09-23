@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app import create_app
+from app import create_app, storage
 
 FAKE_AUDIO = b"\x00" * 500
 FAKE_FRAME = b"\xff\xd8\xff\xe0" + b"\x00" * 100
@@ -164,6 +164,7 @@ def test_delete_interview(client):
     "analysis_content": "Bon",
     "analysis_form": "OK",
     "ideal_answer_text": "Idéal",
+    "ideal_plan_text": "Plan",
 })
 @patch("services.ai_service.transcribe_audio", return_value="Réponse")
 def test_analyze_answer_uses_interview_id(mock_transcribe, mock_analyze, mock_tts, client):
@@ -187,6 +188,7 @@ def test_analyze_answer_uses_interview_id(mock_transcribe, mock_analyze, mock_tt
     "analysis_content": "Bon contenu",
     "analysis_form": "Bonne forme",
     "ideal_answer_text": "Réponse idéale",
+    "ideal_plan_text": "Plan",
 })
 @patch("services.ai_service.analyze_visual", return_value="Bon contact visuel.")
 @patch("services.ai_service.transcribe_audio", return_value="Ma réponse")
@@ -279,6 +281,7 @@ def test_generate_neutral_answer_persists_on_feedback(client):
                 "analysis_content": "Bon",
                 "analysis_form": "OK",
                 "ideal_answer_text": "Idéal",
+                "ideal_plan_text": "Plan",
             },
         ),
         patch("services.ai_service.transcribe_audio", return_value="Réponse"),
@@ -308,6 +311,158 @@ def test_generate_neutral_answer_persists_on_feedback(client):
     feedback = detail["feedbacks"]["0"] if "0" in detail["feedbacks"] else detail["feedbacks"][0]
     assert feedback["ideal_answer_text"] == "Idéal"
     assert feedback["neutral_answer_text"] == "Réponse neutre."
+
+
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.analyze_answer", return_value={
+    "transcription": "Réponse",
+    "analysis_content": "Bon",
+    "analysis_form": "OK",
+    "ideal_answer_text": "Idéal",
+    "ideal_plan_text": "- Point 1\n- Point 2",
+})
+@patch("services.ai_service.transcribe_audio", return_value="Réponse")
+def test_analyze_answer_seeds_validated_fields_on_first_call(mock_transcribe, mock_analyze, mock_tts, client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/analyze-answer",
+        data={
+            "interview_id": itw["interview_id"],
+            "question_index": "0",
+            "duration_seconds": "30.0",
+            "recording_mode": "audio",
+            "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    body = resp.get_json()
+    assert body["validated_plan_text"] == "- Point 1\n- Point 2"
+    assert body["validated_answer_text"] == "Idéal"
+
+
+def test_analyze_answer_preserves_validated_fields_on_rerecord(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+    interview_id = itw["interview_id"]
+
+    with (
+        patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
+        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.analyze_answer", return_value={
+            "transcription": "Réponse",
+            "analysis_content": "Bon",
+            "analysis_form": "OK",
+            "ideal_answer_text": "Idéal v1",
+            "ideal_plan_text": "Plan v1",
+        }),
+    ):
+        client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": interview_id,
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    existing = storage.get_interview(interview_id)["feedbacks"][0]
+    existing["validated_plan_text"] = "Mon plan retravaillé"
+    existing["validated_answer_text"] = "Ma réponse retravaillée"
+    storage.save_feedback(interview_id, 0, existing)
+
+    with (
+        patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
+        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.analyze_answer", return_value={
+            "transcription": "Réponse",
+            "analysis_content": "Bon",
+            "analysis_form": "OK",
+            "ideal_answer_text": "Idéal v2",
+            "ideal_plan_text": "Plan v2",
+        }),
+    ):
+        resp = client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": interview_id,
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    body = resp.get_json()
+    assert body["validated_plan_text"] == "Mon plan retravaillé"
+    assert body["validated_answer_text"] == "Ma réponse retravaillée"
+    assert body["ideal_plan_text"] == "Plan v2"
+    assert body["ideal_answer_text"] == "Idéal v2"
+
+
+def test_analyze_answer_preserves_empty_validated_string(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+    interview_id = itw["interview_id"]
+
+    with (
+        patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
+        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.analyze_answer", return_value={
+            "transcription": "Réponse",
+            "analysis_content": "Bon",
+            "analysis_form": "OK",
+            "ideal_answer_text": "Idéal v1",
+            "ideal_plan_text": "Plan v1",
+        }),
+    ):
+        client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": interview_id,
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    existing = storage.get_interview(interview_id)["feedbacks"][0]
+    existing["validated_plan_text"] = ""
+    storage.save_feedback(interview_id, 0, existing)
+
+    with (
+        patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
+        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.analyze_answer", return_value={
+            "transcription": "Réponse",
+            "analysis_content": "Bon",
+            "analysis_form": "OK",
+            "ideal_answer_text": "Idéal v2",
+            "ideal_plan_text": "Plan v2",
+        }),
+    ):
+        resp = client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": interview_id,
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    body = resp.get_json()
+    assert body["validated_plan_text"] == ""
 
 
 def test_generate_neutral_answer_unknown_interview(client):

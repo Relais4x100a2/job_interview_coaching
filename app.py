@@ -334,6 +334,18 @@ def create_app() -> Flask:
                     video_path.write_bytes(video_bytes)
                     feedback["user_video_url"] = f"/static/video/{user_video_filename}"
 
+        existing_feedback = storage.get_interview(interview_id)["feedbacks"].get(
+            question_index, {}
+        )
+        for validated_key, generated_key in (
+            ("validated_plan_text", "ideal_plan_text"),
+            ("validated_answer_text", "ideal_answer_text"),
+        ):
+            if validated_key in existing_feedback:
+                feedback[validated_key] = existing_feedback[validated_key]
+            else:
+                feedback[validated_key] = feedback[generated_key]
+
         storage.save_feedback(interview_id, question_index, feedback)
 
         return jsonify(feedback)
