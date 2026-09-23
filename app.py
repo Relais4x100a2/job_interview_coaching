@@ -478,7 +478,7 @@ def create_app() -> Flask:
         content = _build_export_markdown(interview, "validated_plan_text")
         return Response(
             content,
-            mimetype="text/markdown; charset=utf-8",
+            mimetype="text/markdown",
             headers={
                 "Content-Disposition": f'attachment; filename="{interview_id}-plans.md"'
             },
@@ -494,7 +494,7 @@ def create_app() -> Flask:
         content = _build_export_markdown(interview, "validated_answer_text")
         return Response(
             content,
-            mimetype="text/markdown; charset=utf-8",
+            mimetype="text/markdown",
             headers={
                 "Content-Disposition": f'attachment; filename="{interview_id}-reponses.md"'
             },

@@ -625,7 +625,7 @@ def test_export_plans_ordered_and_filters_missing_content(client):
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    assert resp.headers["Content-Type"].startswith("text/markdown")
+    assert resp.headers["Content-Type"] == "text/markdown; charset=utf-8"
     assert f"{interview_id}-plans.md" in resp.headers["Content-Disposition"]
     assert body.index("Mon plan question 1") < body.index("Mon plan question 2")
 
