@@ -579,3 +579,59 @@ def test_save_validated_missing_field_returns_400(client):
         },
     )
     assert resp.status_code == 400
+
+
+def test_export_plans_unknown_interview_returns_404(client):
+    resp = client.get("/api/interviews/unknown/export/plans")
+    assert resp.status_code == 404
+
+
+def test_export_answers_unknown_interview_returns_404(client):
+    resp = client.get("/api/interviews/unknown/export/answers")
+    assert resp.status_code == 404
+
+
+def test_export_plans_empty_state_message(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.get(f"/api/interviews/{itw['interview_id']}/export/plans")
+
+    assert resp.status_code == 200
+    assert "Aucun contenu validé" in resp.get_data(as_text=True)
+
+
+def test_export_plans_ordered_and_filters_missing_content(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+    interview_id = itw["interview_id"]
+
+    # Save question 1's feedback before question 0's, to prove export order
+    # follows question_index, not save order.
+    storage.save_feedback(interview_id, 1, {
+        "transcription": "R2", "analysis_content": "c", "analysis_form": "f",
+        "ideal_answer_text": "Idéal 2", "ideal_plan_text": "Plan 2",
+        "validated_plan_text": "Mon plan question 2",
+        "validated_answer_text": "Ma réponse question 2",
+    })
+    storage.save_feedback(interview_id, 0, {
+        "transcription": "R1", "analysis_content": "c", "analysis_form": "f",
+        "ideal_answer_text": "Idéal 1", "ideal_plan_text": "Plan 1",
+        "validated_plan_text": "Mon plan question 1",
+        "validated_answer_text": "",
+    })
+
+    resp = client.get(f"/api/interviews/{interview_id}/export/plans")
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert resp.headers["Content-Type"].startswith("text/markdown")
+    assert f"{interview_id}-plans.md" in resp.headers["Content-Disposition"]
+    assert body.index("Mon plan question 1") < body.index("Mon plan question 2")
+
+    resp2 = client.get(f"/api/interviews/{interview_id}/export/answers")
+    body2 = resp2.get_data(as_text=True)
+
+    assert f"{interview_id}-reponses.md" in resp2.headers["Content-Disposition"]
+    assert "Ma réponse question 2" in body2
+    assert "Question 1" not in body2
