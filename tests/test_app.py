@@ -490,3 +490,92 @@ def test_generate_questions_endpoint_removed(client):
         json={"cv": "CV", "job_offer": "Offre", "language": "fr", "context": "RH"},
     )
     assert resp.status_code == 404
+
+
+def test_save_validated_updates_fields_only(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+    interview_id = itw["interview_id"]
+
+    with (
+        patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
+        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.analyze_answer", return_value={
+            "transcription": "Réponse",
+            "analysis_content": "Bon contenu",
+            "analysis_form": "OK",
+            "ideal_answer_text": "Idéal",
+            "ideal_plan_text": "Plan",
+        }),
+    ):
+        client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": interview_id,
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    resp = client.post(
+        "/api/save-validated",
+        json={
+            "interview_id": interview_id,
+            "question_index": 0,
+            "validated_plan_text": "Mon plan",
+            "validated_answer_text": "Ma réponse",
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["validated_plan_text"] == "Mon plan"
+    assert body["validated_answer_text"] == "Ma réponse"
+    assert body["analysis_content"] == "Bon contenu"
+
+
+def test_save_validated_unknown_interview_returns_404(client):
+    resp = client.post(
+        "/api/save-validated",
+        json={
+            "interview_id": "unknown",
+            "question_index": 0,
+            "validated_plan_text": "Plan",
+            "validated_answer_text": "Réponse",
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_save_validated_no_prior_feedback_returns_404(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/save-validated",
+        json={
+            "interview_id": itw["interview_id"],
+            "question_index": 0,
+            "validated_plan_text": "Plan",
+            "validated_answer_text": "Réponse",
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_save_validated_missing_field_returns_400(client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/save-validated",
+        json={
+            "interview_id": itw["interview_id"],
+            "question_index": 0,
+            "validated_plan_text": "Plan",
+        },
+    )
+    assert resp.status_code == 400

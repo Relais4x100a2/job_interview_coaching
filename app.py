@@ -402,6 +402,43 @@ def create_app() -> Flask:
             "neutral_audio_url": audio_url,
         })
 
+    @app.post("/api/save-validated")
+    def save_validated():
+        """Enregistre le plan et la réponse validés par l'utilisateur pour une question."""
+        data = request.get_json(silent=True) or {}
+        interview_id = (data.get("interview_id") or "").strip()
+        question_index_raw = data.get("question_index")
+        validated_plan_text = data.get("validated_plan_text")
+        validated_answer_text = data.get("validated_answer_text")
+
+        if not interview_id:
+            raise BadRequest("Le champ 'interview_id' est obligatoire.")
+        if question_index_raw is None:
+            raise BadRequest("Le champ 'question_index' est obligatoire.")
+        if validated_plan_text is None:
+            raise BadRequest("Le champ 'validated_plan_text' est obligatoire.")
+        if validated_answer_text is None:
+            raise BadRequest("Le champ 'validated_answer_text' est obligatoire.")
+
+        try:
+            question_index = int(question_index_raw)
+        except (TypeError, ValueError) as exc:
+            raise BadRequest("question_index invalide.") from exc
+
+        interview = storage.get_interview_with_session(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
+
+        feedback = interview["feedbacks"].get(question_index)
+        if feedback is None:
+            raise NotFound("Aucune analyse existante pour cette question.")
+
+        feedback["validated_plan_text"] = str(validated_plan_text)
+        feedback["validated_answer_text"] = str(validated_answer_text)
+        storage.save_feedback(interview_id, question_index, feedback)
+
+        return jsonify(feedback)
+
     @app.errorhandler(BadRequest)
     def handle_bad_request(exc: BadRequest):
         """Retourne une erreur 400 en JSON."""
