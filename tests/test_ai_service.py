@@ -207,3 +207,61 @@ def test_generate_neutral_ideal_answer_missing_key_raises(mock_call_llm):
         assert False, "Should have raised ValueError"
     except ValueError as exc:
         assert "answer" in str(exc)
+
+
+def test_analyze_speech_pacing_empty_words_returns_empty_structures():
+    result = ai_service.analyze_speech_pacing([])
+    assert result == {
+        "pacing_segments": [],
+        "hesitation_count": 0,
+        "hesitation_timestamps": [],
+    }
+
+
+def test_analyze_speech_pacing_detects_hesitation_in_bounds():
+    words = [
+        {"word": "Je", "start": 0.0, "end": 0.2},
+        {"word": "pense", "start": 0.2, "end": 0.6},
+        {"word": "que", "start": 0.6, "end": 0.8},
+        {"word": "euh", "start": 1.3, "end": 1.5},
+    ]
+    result = ai_service.analyze_speech_pacing(words)
+    assert result["hesitation_count"] == 1
+    assert result["hesitation_timestamps"] == [0.8]
+
+
+def test_analyze_speech_pacing_gap_too_short_not_counted():
+    words = [
+        {"word": "Je", "start": 0.0, "end": 0.5},
+        {"word": "pense", "start": 0.6, "end": 1.0},
+    ]
+    result = ai_service.analyze_speech_pacing(words)
+    assert result["hesitation_count"] == 0
+
+
+def test_analyze_speech_pacing_gap_too_long_resets_and_not_counted():
+    words = [
+        {"word": "Je", "start": 0.0, "end": 1.0},
+        {"word": "pense", "start": 3.0, "end": 3.2},
+        {"word": "que", "start": 3.5, "end": 3.7},
+    ]
+    result = ai_service.analyze_speech_pacing(words)
+    assert result["hesitation_count"] == 0
+
+
+def test_analyze_speech_pacing_prior_speech_too_short_not_counted():
+    words = [
+        {"word": "Je", "start": 0.0, "end": 0.1},
+        {"word": "euh", "start": 0.6, "end": 0.8},
+    ]
+    result = ai_service.analyze_speech_pacing(words)
+    assert result["hesitation_count"] == 0
+
+
+def test_analyze_speech_pacing_computes_sliding_window_wpm():
+    words = [{"word": f"w{i}", "start": float(i), "end": float(i) + 0.5} for i in range(10)]
+    result = ai_service.analyze_speech_pacing(words)
+    segments = result["pacing_segments"]
+    assert segments[0]["start_s"] == 0.0
+    assert segments[0]["end_s"] == 9.5
+    assert segments[0]["wpm"] == 63.2

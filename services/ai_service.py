@@ -251,6 +251,61 @@ def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> tuple[
     return transcription.text.strip(), words
 
 
+PACING_WINDOW_SECONDS = 10.0
+PACING_STEP_SECONDS = 2.0
+HESITATION_SILENCE_MIN_S = 0.25
+HESITATION_SILENCE_MAX_S = 1.2
+HESITATION_MIN_PRIOR_SPEECH_S = 0.4
+
+
+def analyze_speech_pacing(words: list[dict]) -> dict:
+    """Calcule le débit de parole glissant et détecte les hésitations.
+
+    Args:
+        words: Liste de mots `{word, start, end}` issue de `transcribe_audio`.
+
+    Returns:
+        Dict `{pacing_segments, hesitation_count, hesitation_timestamps}`.
+        Structures vides si `words` est vide (jamais d'exception).
+    """
+    if not words:
+        return {
+            "pacing_segments": [],
+            "hesitation_count": 0,
+            "hesitation_timestamps": [],
+        }
+
+    total_end = words[-1]["end"]
+    pacing_segments = []
+    start = 0.0
+    while start < total_end:
+        end = start + PACING_WINDOW_SECONDS
+        window_end = min(end, total_end)
+        window_duration = window_end - start
+        count = sum(1 for w in words if start <= w["start"] < end)
+        wpm = round((count / window_duration) * 60.0, 1) if window_duration > 0 else 0.0
+        pacing_segments.append({"start_s": start, "end_s": window_end, "wpm": wpm})
+        start += PACING_STEP_SECONDS
+
+    hesitation_count = 0
+    hesitation_timestamps = []
+    prior_speech_start = words[0]["start"]
+    for i in range(1, len(words)):
+        gap = words[i]["start"] - words[i - 1]["end"]
+        if gap >= HESITATION_SILENCE_MIN_S:
+            prior_speech_duration = words[i - 1]["end"] - prior_speech_start
+            if gap <= HESITATION_SILENCE_MAX_S and prior_speech_duration >= HESITATION_MIN_PRIOR_SPEECH_S:
+                hesitation_count += 1
+                hesitation_timestamps.append(words[i - 1]["end"])
+            prior_speech_start = words[i]["start"]
+
+    return {
+        "pacing_segments": pacing_segments,
+        "hesitation_count": hesitation_count,
+        "hesitation_timestamps": hesitation_timestamps,
+    }
+
+
 def analyze_answer(
     question: str,
     transcription: str,
