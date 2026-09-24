@@ -620,3 +620,38 @@ def synthesize_speech(text: str) -> bytes:
         response_format="mp3",
     )
     return response.content
+
+
+def generate_tics_advice(tics: list[dict], filler_counts: dict[str, int], language: str) -> str:
+    """Génère des conseils de reformulation via LLM, toujours en français.
+
+    Args:
+        tics: Sortie de `detect_tics` (liste `{phrase, count}`).
+        filler_counts: Sortie de `merge_filler_counts` (`{mot: occurrences}`).
+        language: Langue de l'entretien — les tics sont cités dans cette
+            langue, mais le conseil produit reste en français.
+
+    Returns:
+        Texte de conseils en français.
+
+    Raises:
+        ValueError: Si la réponse LLM ne contient pas la clé `advice`.
+    """
+    system_prompt = (
+        "Tu es un coach d'entretien d'embauche. Réponds toujours en "
+        "français, même si les tics de langage cités sont dans une autre "
+        "langue. Réponds uniquement avec un objet JSON de la forme "
+        '{"advice": "..."}.'
+    )
+    user_prompt = (
+        f"Langue de l'entretien : {language}\n"
+        f"Tics de langage détectés (expression, occurrences) : {tics}\n"
+        f"Mots de remplissage détectés (mot, occurrences) : {filler_counts}\n"
+        "Donne des conseils concrets et courts pour reformuler ou éviter "
+        "ces tics à l'avenir."
+    )
+    raw = _call_llm(system_prompt, user_prompt)
+    parsed = _parse_json_response(raw)
+    if "advice" not in parsed:
+        raise ValueError("Réponse LLM invalide : champ 'advice' manquant")
+    return parsed["advice"]

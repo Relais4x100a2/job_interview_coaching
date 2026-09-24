@@ -339,3 +339,28 @@ def test_detect_tics_sorted_by_count_descending():
     tics = ai_service.detect_tics(transcriptions, "fr")
     counts = [t["count"] for t in tics]
     assert counts == sorted(counts, reverse=True)
+
+
+@patch.object(ai_service, "_call_llm")
+def test_generate_tics_advice_returns_text(mock_call_llm):
+    mock_call_llm.return_value = '{"advice": "Essayez de remplacer \\"du coup\\" par une pause silencieuse."}'
+
+    result = ai_service.generate_tics_advice(
+        tics=[{"phrase": "du coup", "count": 5}],
+        filler_counts={"euh": 12},
+        language="fr",
+    )
+
+    assert result == 'Essayez de remplacer "du coup" par une pause silencieuse.'
+    mock_call_llm.assert_called_once()
+
+
+@patch.object(ai_service, "_call_llm")
+def test_generate_tics_advice_missing_key_raises(mock_call_llm):
+    mock_call_llm.return_value = "{}"
+
+    try:
+        ai_service.generate_tics_advice(tics=[], filler_counts={}, language="fr")
+        assert False, "Should have raised ValueError"
+    except ValueError as exc:
+        assert "advice" in str(exc)
