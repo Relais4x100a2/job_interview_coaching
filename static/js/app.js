@@ -234,8 +234,18 @@ function showConsultationMode(feedback) {
     state.viewMode = "consultation";
 }
 
+function confirmDiscardValidated() {
+    if (!state.validatedDirty) return true;
+    const confirmed = confirm(
+        "Vous avez des modifications non enregistrées dans le plan/la réponse validés. Continuer sans les enregistrer ?"
+    );
+    if (confirmed) state.validatedDirty = false;
+    return confirmed;
+}
+
 function goToSetup() {
     if (state.isAnalyzing) return;
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
     state.currentSessionId = null;
     state.offerTitle = null;
@@ -251,6 +261,7 @@ function goToSetup() {
 
 function goToOffer() {
     if (state.isAnalyzing) return;
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
     state.currentInterviewId = null;
     state.currentInterviewContext = null;
@@ -265,13 +276,7 @@ function goToOffer() {
 
 function goToQuestions() {
     if (state.isAnalyzing) return;
-    if (state.validatedDirty) {
-        const confirmed = confirm(
-            "Vous avez des modifications non enregistrées dans le plan/la réponse validés. Continuer sans les enregistrer ?"
-        );
-        if (!confirmed) return;
-        state.validatedDirty = false;
-    }
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
     state.currentQuestionIndex = null;
     renderQuestions();
@@ -818,13 +823,7 @@ function resetRecordingView() {
 
 function startRerecording() {
     if (state.isAnalyzing) return;
-    if (state.validatedDirty) {
-        const confirmed = confirm(
-            "Vous avez des modifications non enregistrées dans le plan/la réponse validés. Continuer sans les enregistrer ?"
-        );
-        if (!confirmed) return;
-        state.validatedDirty = false;
-    }
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
     updateRecordingReferencePanel(state.currentQuestionIndex);
     resetRecordingView();
