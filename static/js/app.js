@@ -270,6 +270,7 @@ function goToQuestions() {
             "Vous avez des modifications non enregistrées dans le plan/la réponse validés. Continuer sans les enregistrer ?"
         );
         if (!confirmed) return;
+        state.validatedDirty = false;
     }
     stopMicrophone();
     state.currentQuestionIndex = null;
@@ -822,6 +823,7 @@ function startRerecording() {
             "Vous avez des modifications non enregistrées dans le plan/la réponse validés. Continuer sans les enregistrer ?"
         );
         if (!confirmed) return;
+        state.validatedDirty = false;
     }
     stopMicrophone();
     updateRecordingReferencePanel(state.currentQuestionIndex);
