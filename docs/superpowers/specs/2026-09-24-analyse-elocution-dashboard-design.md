@@ -39,8 +39,9 @@ dashboard multi-colonnes.
 
 - Pas de refonte de l'écran d'accueil ni de l'écran de détail d'offre.
 - Pas de librairie de graphes externe (sparkline en `<svg>` inline).
-- Pas de migration de schéma SQL (tout passe par les colonnes JSON
-  existantes `interviews.data` / `feedbacks`).
+- Pas de refonte du schéma SQL : seul un nouveau champ `speech_stats` est
+  ajouté à `interviews` (migration additive, colonne nullable par défaut),
+  le reste passe par la colonne JSON existante `feedbacks`.
 
 ## Architecture
 
@@ -85,13 +86,15 @@ Nouvelle fonction avec appel LLM, courte :
   - Prend en entrée les tics + compteurs de fillers détectés, produit un
     texte de conseils concrets de reformulation.
 
-### Modèle de données (JSON existant, pas de migration)
+### Modèle de données
 
-Par réponse, le dict `feedback` (déjà stocké via `save_feedback`) gagne :
-`pacing_segments`, `hesitation_count`, `hesitation_timestamps`,
-`filler_word_count`.
+Par réponse, le dict `feedback` (déjà stocké via `save_feedback` dans la
+colonne JSON `feedbacks` existante) gagne : `pacing_segments`,
+`hesitation_count`, `hesitation_timestamps`, `filler_word_count`.
 
-Par entretien, nouveau champ `speech_stats` dans `interviews.data` :
+Par entretien, nouvelle colonne `speech_stats TEXT NOT NULL DEFAULT 'null'`
+sur `interviews` (migration additive guardée par `PRAGMA table_info`, sur le
+modèle de `_migrate_legacy_schema`), contenant un JSON :
 ```json
 {
   "tics": [{"phrase": "du coup", "count": 5}],
