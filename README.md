@@ -2,6 +2,25 @@
 
 Application Flask containerisée pour s'entraîner aux entretiens d'embauche : une offre (CV + fiche de poste) peut donner lieu à plusieurs entretiens (contextes/langues différents), avec génération de questions personnalisées, enregistrement audio ou vidéo, transcription Whisper, analyse IA (fond, forme et non-verbal), et synthèse vocale de la réponse idéale.
 
+## Aperçu
+
+*(Captures d'écran réalisées avec des données de démonstration fictives.)*
+
+**Toutes vos offres en un coup d'œil**, avec recherche et accès direct à une question déjà posée, tous entretiens confondus :
+![Écran d'accueil : liste des offres et recherche de question](docs/screenshots/accueil.jpg)
+
+**Chaque offre regroupe ses entretiens**, un par contexte ou langue :
+![Détail d'une offre et de ses entretiens](docs/screenshots/offre.jpg)
+
+**Les questions générées par l'IA**, avec suivi visuel de la progression :
+![Grille des questions d'un entretien](docs/screenshots/questions.jpg)
+
+**Un feedback détaillé après chaque réponse** : transcription, analyse du fond et de la forme, réponse idéale :
+![Feedback détaillé sur une réponse](docs/screenshots/feedback.jpg)
+
+**Retrouvez une question déjà posée sur une autre offre**, et sautez directement à sa consultation ou son enregistrement :
+![Recherche de question inter-offres](docs/screenshots/recherche.jpg)
+
 ## Fonctionnalités
 
 - Création d'une offre (CV + fiche de poste) reformatée automatiquement en Markdown structuré par LLM (suppression du contenu hors-sujet : discours RSE, "qui sommes-nous", etc.), avec repli sur le texte brut si le formatage échoue
