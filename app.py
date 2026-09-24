@@ -181,6 +181,14 @@ def create_app() -> Flask:
         archived = request.args.get("archived", "false").lower() == "true"
         return jsonify({"sessions": storage.get_all_sessions(archived=archived)})
 
+    @app.get("/api/search/questions")
+    def search_questions():
+        """Recherche des questions contenant un texte, tous entretiens actifs confondus."""
+        query = (request.args.get("q") or "").strip()
+        if not query:
+            return jsonify({"results": []})
+        return jsonify({"results": storage.search_questions(query)})
+
     @app.patch("/api/sessions/<session_id>/title")
     def update_session_title(session_id: str):
         """Met à jour le titre d'une session."""

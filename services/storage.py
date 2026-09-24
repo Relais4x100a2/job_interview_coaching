@@ -328,6 +328,41 @@ class InMemoryStorage:
                 raise KeyError(f"Entretien introuvable : {interview_id}")
             del self._interviews[interview_id]
 
+    def search_questions(self, query: str) -> list[dict[str, Any]]:
+        """Recherche des questions contenant `query`, tous entretiens actifs confondus.
+
+        Args:
+            query: Texte à rechercher (insensible à la casse).
+
+        Returns:
+            Correspondances triées par offre la plus récente d'abord, chacune
+            identifiant l'offre, l'entretien et l'index de la question.
+        """
+        needle = query.lower()
+        results = []
+        with self._lock:
+            for itw in self._interviews.values():
+                session = self._sessions.get(itw["session_id"])
+                if session is None or session["archived"]:
+                    continue
+                for index, question in enumerate(itw["questions"]):
+                    if needle in question.lower():
+                        results.append({
+                            "session_id": session["session_id"],
+                            "offer_title": session["offer_title"],
+                            "interview_id": itw["interview_id"],
+                            "context": itw["context"],
+                            "language": itw["language"],
+                            "question_index": index,
+                            "question": question,
+                            "answered": index in itw["feedbacks"],
+                            "_sort_key": session["created_at"],
+                        })
+        results.sort(key=lambda r: r["_sort_key"], reverse=True)
+        for r in results:
+            del r["_sort_key"]
+        return results
+
 
 class SQLiteStorage:
     """Stockage SQLite des offres et entretiens d'entraînement."""
@@ -816,6 +851,47 @@ class SQLiteStorage:
             )
             if cursor.rowcount == 0:
                 raise KeyError(f"Entretien introuvable : {interview_id}")
+
+    def search_questions(self, query: str) -> list[dict[str, Any]]:
+        """Recherche des questions contenant `query`, tous entretiens actifs confondus.
+
+        Args:
+            query: Texte à rechercher (insensible à la casse).
+
+        Returns:
+            Correspondances triées par offre la plus récente d'abord, chacune
+            identifiant l'offre, l'entretien et l'index de la question.
+        """
+        pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.session_id, s.offer_title,
+                       i.interview_id, i.context, i.language,
+                       je.key AS question_index, je.value AS question,
+                       json_extract(i.feedbacks, '$.' || je.key) IS NOT NULL AS answered
+                FROM interviews i
+                JOIN sessions s ON s.session_id = i.session_id
+                JOIN json_each(i.questions) je
+                WHERE s.archived = 0 AND je.value LIKE ? ESCAPE '\\'
+                ORDER BY s.created_at DESC
+                """,
+                (pattern,),
+            ).fetchall()
+
+        return [
+            {
+                "session_id": row["session_id"],
+                "offer_title": row["offer_title"],
+                "interview_id": row["interview_id"],
+                "context": row["context"],
+                "language": row["language"],
+                "question_index": int(row["question_index"]),
+                "question": row["question"],
+                "answered": bool(row["answered"]),
+            }
+            for row in rows
+        ]
 
 
 def create_storage(

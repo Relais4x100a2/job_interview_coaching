@@ -47,6 +47,7 @@ const NAV_BUTTON_IDS = [
 
 const views = {
     setup: document.getElementById("view-setup"),
+    questionSearch: document.getElementById("view-question-search"),
     offer: document.getElementById("view-offer"),
     questions: document.getElementById("view-questions"),
     recording: document.getElementById("view-recording"),
@@ -107,7 +108,7 @@ function updateBreadcrumb(view) {
     const interviewEl = document.getElementById("breadcrumb-interview");
     const questionEl = document.getElementById("breadcrumb-question");
 
-    if (!view || view === "setup") {
+    if (!view || view === "setup" || view === "questionSearch") {
         breadcrumb.classList.add("hidden");
         return;
     }
@@ -881,6 +882,104 @@ function renderQuestions() {
     });
 }
 
+let questionSearchDebounce = null;
+
+function openQuestionSearch() {
+    showView("questionSearch");
+    document.getElementById("question-search-input").focus();
+}
+
+function performQuestionSearch() {
+    const query = document.getElementById("question-search-input").value.trim();
+    const loadingEl = document.getElementById("question-search-loading");
+    const resultsEl = document.getElementById("question-search-results");
+    const emptyEl = document.getElementById("question-search-empty");
+    const hintEl = document.getElementById("question-search-hint");
+    hideError("question-search-error");
+
+    if (query.length < 2) {
+        resultsEl.innerHTML = "";
+        emptyEl.classList.add("hidden");
+        loadingEl.classList.add("hidden");
+        hintEl.classList.remove("hidden");
+        return;
+    }
+
+    hintEl.classList.add("hidden");
+    emptyEl.classList.add("hidden");
+    loadingEl.classList.remove("hidden");
+    resultsEl.innerHTML = "";
+
+    fetch(`/api/search/questions?q=${encodeURIComponent(query)}`)
+        .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Erreur lors de la recherche.");
+            const results = data.results || [];
+            if (results.length === 0) {
+                emptyEl.classList.remove("hidden");
+            } else {
+                renderQuestionSearchResults(results);
+            }
+        })
+        .catch((err) => showError("question-search-error", err.message))
+        .finally(() => loadingEl.classList.add("hidden"));
+}
+
+function renderQuestionSearchResults(results) {
+    const resultsEl = document.getElementById("question-search-results");
+    resultsEl.innerHTML = "";
+
+    results.forEach((result) => {
+        const isFr = result.language === "fr";
+        const langLabel = isFr ? "FR" : "EN";
+        const langClass = isFr ? "bg-indigo-100 text-indigo-700" : "bg-amber-100 text-amber-700";
+        const statusBadge = result.answered
+            ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Complétée 🔊</span>'
+            : '<span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Non répondue</span>';
+
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "w-full text-left rounded-xl shadow-sm border border-slate-200 bg-white p-4 hover:ring-2 hover:ring-indigo-400 transition";
+        card.innerHTML = `
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="text-xs text-slate-500">${result.offer_title} · ${result.context}</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold ${langClass} px-2 py-0.5 rounded-full">${langLabel}</span>
+                    ${statusBadge}
+                </div>
+            </div>
+            <p class="mt-2 text-slate-700">${result.question}</p>
+        `;
+        card.addEventListener("click", () => jumpToSearchResult(result));
+        resultsEl.appendChild(card);
+    });
+}
+
+async function jumpToSearchResult(result) {
+    hideError("question-search-error");
+    try {
+        const response = await fetch(`/api/interviews/${result.interview_id}`);
+        const data = await response.json();
+
+        if (response.status === 404) {
+            showError("question-search-error", "Cet entretien n'existe plus.");
+            return;
+        }
+        if (!response.ok) throw new Error(data.error || "Erreur lors du chargement de l'entretien.");
+
+        state.currentSessionId = result.session_id;
+        state.offerTitle = result.offer_title;
+        state.currentInterviewId = data.interview_id;
+        state.currentInterviewContext = data.context;
+        state.questions = data.questions || [];
+        state.feedbacks = data.feedbacks || {};
+
+        selectQuestion(result.question_index);
+    } catch (err) {
+        showError("question-search-error", err.message);
+    }
+}
+
 function selectQuestion(index) {
     if (state.isAnalyzing) return;
 
@@ -1400,6 +1499,12 @@ document.getElementById("btn-save-offer-content").addEventListener("click", save
 document.getElementById("btn-cancel-offer-content").addEventListener("click", cancelEditOfferContent);
 document.getElementById("btn-add-interview").addEventListener("click", addInterview);
 document.getElementById("sessions-search").addEventListener("input", applySessionsFilter);
+document.getElementById("btn-open-question-search").addEventListener("click", openQuestionSearch);
+document.getElementById("btn-back-home-search").addEventListener("click", goToSetup);
+document.getElementById("question-search-input").addEventListener("input", () => {
+    clearTimeout(questionSearchDebounce);
+    questionSearchDebounce = setTimeout(performQuestionSearch, 300);
+});
 document.getElementById("breadcrumb").addEventListener("click", (e) => {
     const offerEl = e.target.closest("#breadcrumb-offer");
     if (!offerEl || !state.currentSessionId) return;
