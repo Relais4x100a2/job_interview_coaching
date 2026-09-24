@@ -8,6 +8,7 @@ const state = {
     interviews: [],
     currentInterviewId: null,
     currentInterviewContext: null,
+    currentInterviewLanguage: null,
     questions: [],
     feedbacks: {},
     currentQuestionIndex: null,
@@ -832,6 +833,7 @@ async function loadInterview(interviewId) {
 
         state.currentInterviewId = data.interview_id;
         state.currentInterviewContext = data.context;
+        state.currentInterviewLanguage = data.language;
         state.questions = data.questions || [];
         state.feedbacks = data.feedbacks || {};
         state.currentQuestionIndex = null;
@@ -971,6 +973,7 @@ async function jumpToSearchResult(result) {
         state.offerTitle = result.offer_title;
         state.currentInterviewId = data.interview_id;
         state.currentInterviewContext = data.context;
+        state.currentInterviewLanguage = data.language;
         state.questions = data.questions || [];
         state.feedbacks = data.feedbacks || {};
 
@@ -1135,6 +1138,7 @@ function stopRecording() {
         startAnalysisProgress();
     }
 }
+
 
 function setRecordingModeLocked(locked) {
     document.querySelectorAll('input[name="recording-mode"]').forEach((radio) => {
