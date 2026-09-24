@@ -306,6 +306,42 @@ def analyze_speech_pacing(words: list[dict]) -> dict:
     }
 
 
+FILLER_WORD_PATTERNS = {
+    "fr": ["euh", "hum", "du coup", "en fait", "voilà"],
+    "en": ["um", "uh", "like", "you know", "actually"],
+}
+
+
+def count_filler_words(transcription: str, language: str) -> dict[str, int]:
+    """Compte les mots de remplissage littéraux dans une transcription.
+
+    Args:
+        transcription: Texte transcrit par Whisper.
+        language: Langue de l'entretien (`fr` ou `en`).
+
+    Returns:
+        Dict `{motif: occurrences}`, uniquement les motifs trouvés au moins
+        une fois.
+    """
+    patterns = FILLER_WORD_PATTERNS.get(language, FILLER_WORD_PATTERNS["fr"])
+    text = transcription.lower()
+    counts: dict[str, int] = {}
+    for phrase in patterns:
+        matches = re.findall(rf"\b{re.escape(phrase)}\b", text)
+        if matches:
+            counts[phrase] = len(matches)
+    return counts
+
+
+def merge_filler_counts(counts_list: list[dict[str, int]]) -> dict[str, int]:
+    """Fusionne plusieurs compteurs de mots de remplissage en un seul total."""
+    merged: dict[str, int] = {}
+    for counts in counts_list:
+        for phrase, count in counts.items():
+            merged[phrase] = merged.get(phrase, 0) + count
+    return merged
+
+
 def analyze_answer(
     question: str,
     transcription: str,

@@ -265,3 +265,34 @@ def test_analyze_speech_pacing_computes_sliding_window_wpm():
     assert segments[0]["start_s"] == 0.0
     assert segments[0]["end_s"] == 9.5
     assert segments[0]["wpm"] == 63.2
+
+
+def test_count_filler_words_french():
+    result = ai_service.count_filler_words(
+        "Alors euh, en fait, du coup, euh, je pense que voilà.", "fr"
+    )
+    assert result == {"euh": 2, "en fait": 1, "du coup": 1, "voilà": 1}
+
+
+def test_count_filler_words_english():
+    result = ai_service.count_filler_words(
+        "So um, like, you know, I actually think um this works.", "en"
+    )
+    assert result == {"um": 2, "like": 1, "you know": 1, "actually": 1}
+
+
+def test_count_filler_words_no_match_returns_empty_dict():
+    result = ai_service.count_filler_words("Une réponse parfaitement fluide.", "fr")
+    assert result == {}
+
+
+def test_merge_filler_counts_sums_across_answers():
+    merged = ai_service.merge_filler_counts([
+        {"euh": 2, "voilà": 1},
+        {"euh": 1, "du coup": 3},
+    ])
+    assert merged == {"euh": 3, "voilà": 1, "du coup": 3}
+
+
+def test_merge_filler_counts_empty_list_returns_empty_dict():
+    assert ai_service.merge_filler_counts([]) == {}
