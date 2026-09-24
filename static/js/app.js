@@ -27,6 +27,14 @@ const state = {
 };
 
 let activeStream = null;
+let allSessions = [];
+let analysisStepInterval = null;
+
+const ANALYSIS_STEPS = [
+    "Transcription de votre réponse…",
+    "Analyse du contenu et de la forme…",
+    "Génération de la réponse idéale et synthèse vocale…",
+];
 
 const NAV_BUTTON_IDS = [
     "btn-back-home-offer",
@@ -162,6 +170,8 @@ function stopMicrophone() {
     state.mediaRecorder = null;
     state.isAbandoning = false;
     stopTimer();
+    stopAnalysisProgress();
+    setRecordingModeLocked(false);
 }
 
 async function updateOfferTitle(sessionId, newTitle) {
@@ -234,6 +244,36 @@ function showConsultationMode(feedback) {
     state.viewMode = "consultation";
 }
 
+function showConfirmModal({ title, message, confirmLabel = "Confirmer" } = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById("confirm-modal");
+        document.getElementById("confirm-modal-title").textContent = title;
+        document.getElementById("confirm-modal-message").textContent = message;
+        const confirmBtn = document.getElementById("confirm-modal-confirm");
+        const cancelBtn = document.getElementById("confirm-modal-cancel");
+        confirmBtn.textContent = confirmLabel;
+
+        const cleanup = (result) => {
+            modal.classList.add("hidden");
+            confirmBtn.removeEventListener("click", onConfirm);
+            cancelBtn.removeEventListener("click", onCancel);
+            document.removeEventListener("keydown", onKeydown);
+            resolve(result);
+        };
+        const onConfirm = () => cleanup(true);
+        const onCancel = () => cleanup(false);
+        const onKeydown = (e) => {
+            if (e.key === "Escape") cleanup(false);
+        };
+
+        confirmBtn.addEventListener("click", onConfirm);
+        cancelBtn.addEventListener("click", onCancel);
+        document.addEventListener("keydown", onKeydown);
+        modal.classList.remove("hidden");
+        confirmBtn.focus();
+    });
+}
+
 function confirmDiscardValidated() {
     if (!state.validatedDirty) return true;
     const confirmed = confirm(
@@ -287,6 +327,11 @@ async function loadSessions() {
     hideError("sessions-error");
     const emptyEl = document.getElementById("sessions-empty");
     const listEl = document.getElementById("sessions-list");
+    const loadingEl = document.getElementById("sessions-loading");
+
+    emptyEl.classList.add("hidden");
+    listEl.innerHTML = "";
+    loadingEl.classList.remove("hidden");
 
     try {
         const response = await fetch("/api/sessions");
@@ -295,18 +340,42 @@ async function loadSessions() {
             throw new Error(data.error || "Erreur lors du chargement des sessions.");
         }
 
-        const sessions = data.sessions || [];
-        if (sessions.length === 0) {
-            listEl.innerHTML = "";
-            emptyEl.classList.remove("hidden");
-            return;
-        }
-
-        emptyEl.classList.add("hidden");
-        renderSessions(sessions);
+        allSessions = data.sessions || [];
+        applySessionsFilter();
     } catch (err) {
         showError("sessions-error", err.message);
+    } finally {
+        loadingEl.classList.add("hidden");
     }
+}
+
+function applySessionsFilter() {
+    const searchInput = document.getElementById("sessions-search");
+    const emptyEl = document.getElementById("sessions-empty");
+    const listEl = document.getElementById("sessions-list");
+    const query = searchInput.value.trim().toLowerCase();
+
+    if (allSessions.length === 0) {
+        searchInput.classList.add("hidden");
+        listEl.innerHTML = "";
+        emptyEl.textContent = "Aucune session enregistrée.";
+        emptyEl.classList.remove("hidden");
+        return;
+    }
+    searchInput.classList.remove("hidden");
+
+    const filtered = query
+        ? allSessions.filter((s) => s.offer_title.toLowerCase().includes(query))
+        : allSessions;
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = "";
+        emptyEl.textContent = "Aucune offre ne correspond à votre recherche.";
+        emptyEl.classList.remove("hidden");
+        return;
+    }
+    emptyEl.classList.add("hidden");
+    renderSessions(filtered);
 }
 
 function interviewCountLabel(count) {
@@ -324,13 +393,13 @@ function renderSessions(sessions) {
         card.innerHTML = `
             <div class="flex items-start justify-between gap-1">
                 <p class="font-medium text-slate-800 session-title">${session.offer_title}</p>
-                <button type="button" data-action="edit-title" class="text-xs text-slate-400 hover:text-indigo-600 px-1 py-0.5 rounded hover:bg-indigo-50 transition flex-shrink-0" title="Renommer">✏️</button>
+                <button type="button" data-action="edit-title" aria-label="Renommer « ${session.offer_title} »" class="text-xs text-slate-400 hover:text-indigo-600 px-1 py-0.5 rounded hover:bg-indigo-50 transition flex-shrink-0" title="Renommer">✏️</button>
             </div>
             <p class="text-xs text-slate-500 mt-1">${formatDate(session.created_at)}</p>
             <p class="text-sm text-slate-600 mt-2">${interviewCountLabel(session.interview_count)}</p>
             <div class="flex gap-2 mt-3 justify-end">
-                <button type="button" data-action="archive" class="text-xs text-slate-400 hover:text-amber-600 px-2 py-1 rounded hover:bg-amber-50 transition">Archiver</button>
-                <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
+                <button type="button" data-action="archive" aria-label="Archiver « ${session.offer_title} »" class="text-xs text-slate-400 hover:text-amber-600 px-2 py-1 rounded hover:bg-amber-50 transition">Archiver</button>
+                <button type="button" data-action="delete" aria-label="Supprimer « ${session.offer_title} »" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
             </div>
         `;
         card.addEventListener("click", (e) => {
@@ -348,7 +417,7 @@ function renderSessions(sessions) {
         });
         card.querySelector("[data-action='delete']").addEventListener("click", (e) => {
             e.stopPropagation();
-            deleteSession(session.session_id);
+            deleteSession(session.session_id, false, session.offer_title);
         });
         listEl.appendChild(card);
     });
@@ -372,13 +441,13 @@ function renderArchivedSessions(sessions) {
         card.innerHTML = `
             <div class="flex items-start justify-between gap-1">
                 <p class="font-medium text-slate-800 session-title">${session.offer_title}</p>
-                <button type="button" data-action="edit-title" class="text-xs text-slate-400 hover:text-indigo-600 px-1 py-0.5 rounded hover:bg-indigo-50 transition flex-shrink-0" title="Renommer">✏️</button>
+                <button type="button" data-action="edit-title" aria-label="Renommer « ${session.offer_title} »" class="text-xs text-slate-400 hover:text-indigo-600 px-1 py-0.5 rounded hover:bg-indigo-50 transition flex-shrink-0" title="Renommer">✏️</button>
             </div>
             <p class="text-xs text-slate-500 mt-1">${formatDate(session.created_at)}</p>
             <p class="text-sm text-slate-600 mt-2">${interviewCountLabel(session.interview_count)}</p>
             <div class="flex gap-2 mt-3 justify-end">
-                <button type="button" data-action="unarchive" class="text-xs text-indigo-500 hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-50 transition">Restaurer</button>
-                <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
+                <button type="button" data-action="unarchive" aria-label="Restaurer « ${session.offer_title} »" class="text-xs text-indigo-500 hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-50 transition">Restaurer</button>
+                <button type="button" data-action="delete" aria-label="Supprimer « ${session.offer_title} »" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
             </div>
         `;
         card.querySelector("[data-action='edit-title']").addEventListener("click", (e) => {
@@ -390,7 +459,7 @@ function renderArchivedSessions(sessions) {
             unarchiveSession(session.session_id);
         });
         card.querySelector("[data-action='delete']").addEventListener("click", () => {
-            deleteSession(session.session_id, true);
+            deleteSession(session.session_id, true, session.offer_title);
         });
         listEl.appendChild(card);
     });
@@ -417,8 +486,13 @@ async function unarchiveSession(sessionId) {
     }
 }
 
-async function deleteSession(sessionId, fromArchived = false) {
-    if (!confirm("Supprimer définitivement cette offre ?")) return;
+async function deleteSession(sessionId, fromArchived = false, title = "cette offre") {
+    const confirmed = await showConfirmModal({
+        title: "Supprimer l'offre",
+        message: `Supprimer définitivement « ${title} » ? Tous les entretiens associés seront aussi supprimés. Cette action est irréversible.`,
+        confirmLabel: "Supprimer",
+    });
+    if (!confirmed) return;
     try {
         const resp = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
         if (!resp.ok) throw new Error("Erreur lors de la suppression.");
@@ -433,6 +507,11 @@ async function deleteSession(sessionId, fromArchived = false) {
 }
 
 async function loadArchivedSessions() {
+    const loadingEl = document.getElementById("archived-loading");
+    document.getElementById("archived-list").innerHTML = "";
+    document.getElementById("archived-empty").classList.add("hidden");
+    loadingEl.classList.remove("hidden");
+
     try {
         const response = await fetch("/api/sessions?archived=true");
         const data = await response.json();
@@ -440,6 +519,8 @@ async function loadArchivedSessions() {
         renderArchivedSessions(data.sessions || []);
     } catch (err) {
         showError("sessions-error", err.message);
+    } finally {
+        loadingEl.classList.add("hidden");
     }
 }
 
@@ -504,6 +585,10 @@ async function createOffer() {
 
 async function loadOfferDetail(sessionId) {
     hideError("interview-error");
+    const loadingEl = document.getElementById("interviews-loading");
+    document.getElementById("interviews-list").innerHTML = "";
+    document.getElementById("interviews-empty").classList.add("hidden");
+    loadingEl.classList.remove("hidden");
 
     try {
         const response = await fetch(`/api/sessions/${sessionId}`);
@@ -535,6 +620,8 @@ async function loadOfferDetail(sessionId) {
         updateBreadcrumb(getCurrentView());
     } catch (err) {
         showError("interview-error", err.message);
+    } finally {
+        loadingEl.classList.add("hidden");
     }
 }
 
@@ -645,7 +732,7 @@ function renderInterviews() {
             </div>
             <p class="text-sm text-slate-500 mt-2">${progress}</p>
             <div class="flex gap-2 mt-3 justify-end">
-                <button type="button" data-action="delete" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
+                <button type="button" data-action="delete" aria-label="Supprimer l'entretien « ${interview.context} »" class="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Supprimer</button>
             </div>
         `;
         card.addEventListener("click", (e) => {
@@ -654,14 +741,19 @@ function renderInterviews() {
         });
         card.querySelector("[data-action='delete']").addEventListener("click", (e) => {
             e.stopPropagation();
-            deleteInterview(interview.interview_id);
+            deleteInterview(interview.interview_id, interview.context);
         });
         listEl.appendChild(card);
     });
 }
 
-async function deleteInterview(interviewId) {
-    if (!confirm("Supprimer définitivement cet entretien ?")) return;
+async function deleteInterview(interviewId, context = "cet entretien") {
+    const confirmed = await showConfirmModal({
+        title: "Supprimer l'entretien",
+        message: `Supprimer définitivement l'entretien « ${context} » ainsi que toutes ses questions et réponses ? Cette action est irréversible.`,
+        confirmLabel: "Supprimer",
+    });
+    if (!confirmed) return;
     try {
         const resp = await fetch(`/api/interviews/${interviewId}`, { method: "DELETE" });
         if (!resp.ok) throw new Error("Erreur lors de la suppression.");
@@ -754,10 +846,16 @@ function renderQuestions() {
     const grid = document.getElementById("questions-grid");
     grid.innerHTML = "";
 
-    document.getElementById("export-plans-link").href =
-        `/api/interviews/${state.currentInterviewId}/export/plans`;
-    document.getElementById("export-answers-link").href =
-        `/api/interviews/${state.currentInterviewId}/export/answers`;
+    const hasValidatedPlan = state.questions.some((_, i) => getFeedback(i)?.validated_plan_text);
+    const hasValidatedAnswer = state.questions.some((_, i) => getFeedback(i)?.validated_answer_text);
+
+    const plansLink = document.getElementById("export-plans-link");
+    plansLink.href = `/api/interviews/${state.currentInterviewId}/export/plans`;
+    plansLink.classList.toggle("hidden", !hasValidatedPlan);
+
+    const answersLink = document.getElementById("export-answers-link");
+    answersLink.href = `/api/interviews/${state.currentInterviewId}/export/answers`;
+    answersLink.classList.toggle("hidden", !hasValidatedAnswer);
 
     state.questions.forEach((question, index) => {
         const answered = isQuestionAnswered(index);
@@ -805,6 +903,7 @@ function selectQuestion(index) {
 
 function resetRecordingView() {
     hideError("recording-error");
+    setRecordingModeLocked(false);
     document.getElementById("recording-controls").classList.remove("hidden");
     document.getElementById("analysis-loading").classList.add("hidden");
     document.getElementById("recording-status").textContent = "Appuyez pour enregistrer votre réponse";
@@ -819,6 +918,7 @@ function resetRecordingView() {
     stopFrameCapture();
     state.capturedFrames = [];
     document.getElementById("video-preview").classList.add("hidden");
+    document.getElementById("video-preview-note").classList.add("hidden");
 }
 
 function startRerecording() {
@@ -850,6 +950,7 @@ async function toggleRecording() {
             const preview = document.getElementById("video-preview");
             preview.srcObject = stream;
             preview.classList.remove("hidden");
+            document.getElementById("video-preview-note").classList.remove("hidden");
             startFrameCapture(stream);
             startVideoRecording(stream);
         }
@@ -898,6 +999,7 @@ async function toggleRecording() {
         state.recordingStart = Date.now();
         state.mediaRecorder.start();
         startTimer();
+        setRecordingModeLocked(true);
 
         document.getElementById("recording-status").textContent = "Enregistrement en cours...";
         document.getElementById("btn-record").textContent = "Arrêter l'enregistrement";
@@ -928,8 +1030,33 @@ function stopRecording() {
     if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
         state.mediaRecorder.stop();
         stopTimer();
+        setRecordingModeLocked(false);
         document.getElementById("recording-controls").classList.add("hidden");
         document.getElementById("analysis-loading").classList.remove("hidden");
+        startAnalysisProgress();
+    }
+}
+
+function setRecordingModeLocked(locked) {
+    document.querySelectorAll('input[name="recording-mode"]').forEach((radio) => {
+        radio.disabled = locked;
+    });
+}
+
+function startAnalysisProgress() {
+    const el = document.getElementById("analysis-step-text");
+    let i = 0;
+    el.textContent = ANALYSIS_STEPS[0];
+    analysisStepInterval = setInterval(() => {
+        i = Math.min(i + 1, ANALYSIS_STEPS.length - 1);
+        el.textContent = ANALYSIS_STEPS[i];
+    }, 4000);
+}
+
+function stopAnalysisProgress() {
+    if (analysisStepInterval) {
+        clearInterval(analysisStepInterval);
+        analysisStepInterval = null;
     }
 }
 
@@ -1004,6 +1131,7 @@ function stopFrameCapture() {
     const preview = document.getElementById("video-preview");
     preview.srcObject = null;
     preview.classList.add("hidden");
+    document.getElementById("video-preview-note").classList.add("hidden");
 }
 
 function startVideoRecording(stream) {
@@ -1080,6 +1208,7 @@ async function sendMedia(audioBlob, durationSeconds, frames, videoBlob) {
     } finally {
         state.isAnalyzing = false;
         setNavigationLocked(false);
+        stopAnalysisProgress();
     }
 }
 
@@ -1270,6 +1399,7 @@ document.getElementById("btn-edit-offer-content").addEventListener("click", star
 document.getElementById("btn-save-offer-content").addEventListener("click", saveOfferContent);
 document.getElementById("btn-cancel-offer-content").addEventListener("click", cancelEditOfferContent);
 document.getElementById("btn-add-interview").addEventListener("click", addInterview);
+document.getElementById("sessions-search").addEventListener("input", applySessionsFilter);
 document.getElementById("breadcrumb").addEventListener("click", (e) => {
     const offerEl = e.target.closest("#breadcrumb-offer");
     if (!offerEl || !state.currentSessionId) return;
@@ -1292,6 +1422,12 @@ document.querySelectorAll('input[name="recording-mode"]').forEach((radio) => {
     radio.addEventListener("change", (e) => {
         state.recordingMode = e.target.value;
     });
+});
+
+window.addEventListener("beforeunload", (e) => {
+    if (!state.validatedDirty) return;
+    e.preventDefault();
+    e.returnValue = "";
 });
 
 document.addEventListener("DOMContentLoaded", loadSessions);

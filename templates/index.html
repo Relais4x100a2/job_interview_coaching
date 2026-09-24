@@ -46,6 +46,11 @@
                             Voir les offres archivées
                         </button>
                     </div>
+                    <input id="sessions-search" type="text" placeholder="Rechercher une offre par titre..."
+                        class="hidden w-full border border-slate-300 rounded-lg px-3 py-2 mb-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <div id="sessions-loading" class="hidden py-6 text-center">
+                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-400 border-t-transparent"></div>
+                    </div>
                     <div id="sessions-list" class="grid gap-3 sm:grid-cols-2"></div>
                     <p id="sessions-empty" class="text-slate-400 text-sm hidden">Aucune session enregistrée.</p>
                     <p id="sessions-error" class="text-red-600 text-sm hidden"></p>
@@ -58,6 +63,9 @@
                             class="text-sm text-indigo-600 hover:underline">
                             ← Retour aux offres actives
                         </button>
+                    </div>
+                    <div id="archived-loading" class="hidden py-6 text-center">
+                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-400 border-t-transparent"></div>
                     </div>
                     <div id="archived-list" class="grid gap-3 sm:grid-cols-2"></div>
                     <p id="archived-empty" class="text-slate-400 text-sm hidden">Aucune offre archivée.</p>
@@ -135,6 +143,9 @@
 
             <h2 class="text-xl font-semibold text-slate-700">Entretiens</h2>
 
+            <div id="interviews-loading" class="hidden py-6 text-center">
+                <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-400 border-t-transparent"></div>
+            </div>
             <div id="interviews-list" class="grid gap-3 sm:grid-cols-2"></div>
             <p id="interviews-empty" class="text-slate-400 text-sm hidden">
                 Aucun entretien. Ajoutez votre premier entretien pour commencer.
@@ -183,11 +194,11 @@
             <div id="questions-grid" class="grid gap-3 sm:grid-cols-2"></div>
             <div class="flex gap-4 pt-2">
                 <a id="export-plans-link" href="#" download
-                    class="text-sm text-indigo-600 hover:underline">
+                    class="hidden text-sm text-indigo-600 hover:underline">
                     Exporter tous les plans validés
                 </a>
                 <a id="export-answers-link" href="#" download
-                    class="text-sm text-indigo-600 hover:underline">
+                    class="hidden text-sm text-indigo-600 hover:underline">
                     Exporter toutes les réponses validées
                 </a>
             </div>
@@ -237,7 +248,10 @@
                     </div>
                     <p id="recording-status" class="text-slate-500">Appuyez pour enregistrer votre réponse</p>
                     <video id="video-preview" autoplay muted playsinline
-                        class="hidden mx-auto rounded-lg w-full max-w-md mb-4 -scale-x-100"></video>
+                        class="hidden mx-auto rounded-lg w-full max-w-md mb-1 -scale-x-100"></video>
+                    <p id="video-preview-note" class="hidden text-xs text-slate-400 mb-4">
+                        Aperçu en miroir (comme dans un miroir) — la vidéo enregistrée et les captures d'analyse seront dans le bon sens.
+                    </p>
                     <canvas id="frame-canvas" class="hidden"></canvas>
                     <button id="btn-record" type="button"
                         class="bg-red-500 hover:bg-red-600 text-white font-semibold px-8 py-3 rounded-full transition">
@@ -249,71 +263,75 @@
                 <div id="analysis-loading" class="hidden text-center py-8 bg-white rounded-xl shadow-md">
                     <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"></div>
                     <p class="mt-3 text-slate-500">Analyse en cours, veuillez patienter…</p>
-                    <p class="text-xs text-slate-400 mt-1">Transcription, feedback et synthèse vocale</p>
+                    <p id="analysis-step-text" class="text-xs text-slate-400 mt-1">Transcription de votre réponse…</p>
                 </div>
 
                 <p id="recording-error" class="text-red-600 text-sm text-center hidden"></p>
             </div>
 
             <!-- Mode consultation -->
-            <div id="consultation-mode" class="hidden bg-white rounded-xl shadow-md p-6 space-y-5">
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Votre enregistrement</h3>
-                    <audio id="user-audio" controls class="w-full"></audio>
-                    <video id="user-video" controls playsinline
-                        class="hidden w-full rounded-lg"></video>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Transcription</h3>
-                    <p id="feedback-transcription" class="text-slate-600 bg-slate-50 p-3 rounded-lg"></p>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Analyse du fond</h3>
-                    <div id="feedback-content" class="prose-feedback text-slate-600 bg-slate-50 p-3 rounded-lg"></div>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Analyse de la forme</h3>
-                    <div id="feedback-form" class="prose-feedback text-slate-600 bg-slate-50 p-3 rounded-lg"></div>
-                </div>
-                <div id="feedback-visual-block" class="hidden">
-                    <h3 class="font-semibold text-slate-700 mb-1">Analyse du non-verbal</h3>
-                    <div id="feedback-frames" class="flex gap-2 overflow-x-auto py-2"></div>
-                    <div id="feedback-visual" class="prose-feedback text-slate-600 bg-amber-50 p-3 rounded-lg"></div>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Plan idéal selon LLM</h3>
-                    <p id="feedback-plan" class="text-slate-600 bg-indigo-50 p-3 rounded-lg whitespace-pre-wrap"></p>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Réponse idéale selon LLM</h3>
-                    <p id="feedback-ideal" class="text-slate-600 bg-indigo-50 p-3 rounded-lg whitespace-pre-wrap"></p>
-                    <audio id="ideal-audio" controls class="w-full mt-3"></audio>
-                    <button id="btn-neutral-answer" type="button"
-                        class="mt-3 text-sm text-indigo-600 hover:underline">
-                        Voir une réponse neutre basée sur le CV/l'offre
-                    </button>
-                    <div id="neutral-answer-block" class="hidden mt-3">
-                        <h3 class="font-semibold text-slate-700 mb-1">Réponse neutre (CV/offre)</h3>
-                        <p id="feedback-neutral" class="text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap"></p>
-                        <audio id="neutral-audio" controls class="w-full mt-3"></audio>
+            <div id="consultation-mode" class="hidden bg-white rounded-xl shadow-md p-6 space-y-3">
+                <details open class="group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Votre enregistrement</summary>
+                    <div class="mt-2">
+                        <audio id="user-audio" controls class="w-full"></audio>
+                        <video id="user-video" controls playsinline
+                            class="hidden w-full rounded-lg"></video>
                     </div>
-                    <p id="neutral-answer-error" class="text-red-600 text-sm mt-2 hidden"></p>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Plan validé (vous)</h3>
+                </details>
+                <details class="group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Transcription</summary>
+                    <p id="feedback-transcription" class="mt-2 text-slate-600 bg-slate-50 p-3 rounded-lg"></p>
+                </details>
+                <details open class="group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Analyse du fond</summary>
+                    <div id="feedback-content" class="mt-2 prose-feedback text-slate-600 bg-slate-50 p-3 rounded-lg"></div>
+                </details>
+                <details open class="group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Analyse de la forme</summary>
+                    <div id="feedback-form" class="mt-2 prose-feedback text-slate-600 bg-slate-50 p-3 rounded-lg"></div>
+                </details>
+                <details id="feedback-visual-block" class="hidden group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Analyse du non-verbal</summary>
+                    <div id="feedback-frames" class="mt-2 flex gap-2 overflow-x-auto py-2"></div>
+                    <div id="feedback-visual" class="prose-feedback text-slate-600 bg-amber-50 p-3 rounded-lg"></div>
+                </details>
+                <details class="group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Plan idéal selon LLM</summary>
+                    <p id="feedback-plan" class="mt-2 text-slate-600 bg-indigo-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                </details>
+                <details class="group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Réponse idéale selon LLM</summary>
+                    <div class="mt-2">
+                        <p id="feedback-ideal" class="text-slate-600 bg-indigo-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                        <audio id="ideal-audio" controls class="w-full mt-3"></audio>
+                        <button id="btn-neutral-answer" type="button"
+                            class="mt-3 text-sm text-indigo-600 hover:underline">
+                            Voir une réponse neutre basée sur le CV/l'offre
+                        </button>
+                        <div id="neutral-answer-block" class="hidden mt-3">
+                            <h4 class="font-semibold text-slate-700 mb-1">Réponse neutre (CV/offre)</h4>
+                            <p id="feedback-neutral" class="text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                            <audio id="neutral-audio" controls class="w-full mt-3"></audio>
+                        </div>
+                        <p id="neutral-answer-error" class="text-red-600 text-sm mt-2 hidden"></p>
+                    </div>
+                </details>
+                <details open class="group border-b border-slate-100 pb-3">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Plan validé (vous)</summary>
                     <textarea id="validated-plan-input" rows="4"
-                        class="w-full text-slate-700 border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Réponse validée (vous)</h3>
+                        class="mt-2 w-full text-slate-700 border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+                </details>
+                <details open class="group pb-1">
+                    <summary class="font-semibold text-slate-700 mb-1 cursor-pointer select-none marker:text-indigo-400">Réponse validée (vous)</summary>
                     <textarea id="validated-answer-input" rows="6"
-                        class="w-full text-slate-700 border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+                        class="mt-2 w-full text-slate-700 border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
                     <button id="btn-save-validated" type="button"
                         class="mt-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-lg transition">
-                        Enregistrer
+                        Enregistrer le plan et la réponse
                     </button>
                     <p id="validated-save-error" class="text-red-600 text-sm mt-2 hidden"></p>
-                </div>
+                </details>
                 <div class="flex gap-3 pt-2">
                     <button id="btn-rerecord" type="button"
                         class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition">
@@ -326,6 +344,23 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <div id="confirm-modal" class="hidden fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-lg max-w-sm w-full p-6 space-y-4">
+            <h3 id="confirm-modal-title" class="text-lg font-semibold text-slate-800"></h3>
+            <p id="confirm-modal-message" class="text-slate-600 text-sm"></p>
+            <div class="flex gap-3 justify-end pt-2">
+                <button id="confirm-modal-cancel" type="button"
+                    class="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium transition">
+                    Annuler
+                </button>
+                <button id="confirm-modal-confirm" type="button"
+                    class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition">
+                    Supprimer
+                </button>
+            </div>
+        </div>
     </div>
 
     <script src="/static/js/app.js"></script>
