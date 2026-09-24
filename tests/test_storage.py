@@ -115,6 +115,25 @@ def test_session_progress_counts(store):
     assert itw["feedback_count"] == 1
 
 
+def test_speech_stats_defaults_to_none(store):
+    sid = store.create_session(cv="CV", job_offer="Offre")
+    iid = store.create_interview(sid, context="RH", language="fr")
+    assert store.get_interview(iid)["speech_stats"] is None
+
+
+def test_save_speech_stats(store):
+    sid = store.create_session(cv="CV", job_offer="Offre")
+    iid = store.create_interview(sid, context="RH", language="fr")
+    speech_stats = {"tics": [{"phrase": "du coup", "count": 3}], "filler_totals": {"euh": 2}, "advice": "Conseil."}
+    store.save_speech_stats(iid, speech_stats)
+    assert store.get_interview(iid)["speech_stats"] == speech_stats
+
+
+def test_save_speech_stats_unknown_interview_raises(store):
+    with pytest.raises(KeyError):
+        store.save_speech_stats("unknown", {"tics": [], "filler_totals": {}, "advice": ""})
+
+
 @pytest.fixture()
 def sqlite_store(tmp_path):
     return SQLiteStorage(tmp_path / "test.db")
@@ -163,3 +182,66 @@ def test_sqlite_update_offer_content(sqlite_store):
 def test_sqlite_update_offer_content_unknown_session(sqlite_store):
     with pytest.raises(KeyError):
         sqlite_store.update_offer_content("unknown", cv="CV", job_offer="Offre")
+
+
+def test_sqlite_speech_stats_defaults_to_none(sqlite_store):
+    sid = sqlite_store.create_session(cv="CV", job_offer="Offre")
+    iid = sqlite_store.create_interview(sid, "RH", "fr")
+    assert sqlite_store.get_interview(iid)["speech_stats"] is None
+
+
+def test_sqlite_save_speech_stats(sqlite_store):
+    sid = sqlite_store.create_session(cv="CV", job_offer="Offre")
+    iid = sqlite_store.create_interview(sid, "RH", "fr")
+    speech_stats = {"tics": [{"phrase": "du coup", "count": 3}], "filler_totals": {"euh": 2}, "advice": "Conseil."}
+    sqlite_store.save_speech_stats(iid, speech_stats)
+    assert sqlite_store.get_interview(iid)["speech_stats"] == speech_stats
+
+
+def test_sqlite_save_speech_stats_unknown_interview_raises(sqlite_store):
+    with pytest.raises(KeyError):
+        sqlite_store.save_speech_stats("unknown", {"tics": [], "filler_totals": {}, "advice": ""})
+
+
+def test_sqlite_migrates_existing_interviews_table_without_speech_stats(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE sessions (
+            session_id   TEXT PRIMARY KEY,
+            offer_title  TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            data         TEXT NOT NULL DEFAULT '{}',
+            archived     INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE interviews (
+            interview_id TEXT PRIMARY KEY,
+            session_id   TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+            context      TEXT NOT NULL,
+            language     TEXT NOT NULL CHECK (language IN ('fr', 'en')),
+            questions    TEXT NOT NULL DEFAULT '[]',
+            feedbacks    TEXT NOT NULL DEFAULT '{}',
+            created_at   TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("INSERT INTO sessions VALUES ('s1', 'Test Offer', '2026-01-01T00:00:00', '{}', 0)")
+    conn.execute(
+        "INSERT INTO interviews (interview_id, session_id, context, language, created_at) "
+        "VALUES ('i1', 's1', 'RH', 'fr', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    store = SQLiteStorage(db_path)
+
+    interview = store.get_interview("i1")
+    assert interview is not None
+    assert interview["speech_stats"] is None

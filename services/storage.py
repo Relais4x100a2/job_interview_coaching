@@ -234,6 +234,7 @@ class InMemoryStorage:
                 "language": language,
                 "questions": [],
                 "feedbacks": {},
+                "speech_stats": None,
                 "created_at": datetime.now(UTC),
             }
         return interview_id
@@ -316,6 +317,12 @@ class InMemoryStorage:
             if interview_id not in self._interviews:
                 raise KeyError(f"Entretien introuvable : {interview_id}")
             self._interviews[interview_id]["feedbacks"][question_index] = feedback
+
+    def save_speech_stats(self, interview_id: str, speech_stats: dict) -> None:
+        with self._lock:
+            if interview_id not in self._interviews:
+                raise KeyError(f"Entretien introuvable : {interview_id}")
+            self._interviews[interview_id]["speech_stats"] = speech_stats
 
     def delete_interview(self, interview_id: str) -> None:
         """Supprime définitivement un entretien.
@@ -424,6 +431,7 @@ class SQLiteStorage:
                     language     TEXT NOT NULL CHECK (language IN ('fr', 'en')),
                     questions    TEXT NOT NULL DEFAULT '[]',
                     feedbacks    TEXT NOT NULL DEFAULT '{}',
+                    speech_stats TEXT NOT NULL DEFAULT 'null',
                     created_at   TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_interviews_session
@@ -436,6 +444,15 @@ class SQLiteStorage:
             }
             if "language" in columns:
                 self._migrate_legacy_schema(conn)
+
+            interview_columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(interviews)").fetchall()
+            }
+            if "speech_stats" not in interview_columns:
+                conn.execute(
+                    "ALTER TABLE interviews ADD COLUMN speech_stats TEXT NOT NULL DEFAULT 'null'"
+                )
 
     def _migrate_legacy_schema(self, conn: sqlite3.Connection) -> None:
         """Migre l'ancien schéma (une session = un entretien) vers le nouveau.
@@ -546,6 +563,7 @@ class SQLiteStorage:
             "language": row["language"],
             "questions": json.loads(row["questions"]),
             "feedbacks": _deserialize_feedbacks(row["feedbacks"]),
+            "speech_stats": json.loads(row["speech_stats"]),
             "created_at": datetime.fromisoformat(row["created_at"]),
         }
 
@@ -834,6 +852,16 @@ class SQLiteStorage:
                 WHERE interview_id = ?
                 """,
                 (key, feedback_json, interview_id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Entretien introuvable : {interview_id}")
+
+    def save_speech_stats(self, interview_id: str, speech_stats: dict) -> None:
+        speech_stats_json = json.dumps(speech_stats, ensure_ascii=False)
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "UPDATE interviews SET speech_stats = ? WHERE interview_id = ?",
+                (speech_stats_json, interview_id),
             )
             if cursor.rowcount == 0:
                 raise KeyError(f"Entretien introuvable : {interview_id}")
