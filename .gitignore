@@ -15,3 +15,4 @@ static/video/*
 instance/*
 !instance/.gitkeep
 *.db
+.worktrees/
