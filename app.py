@@ -163,6 +163,7 @@ def create_app() -> Flask:
             "language": interview["language"],
             "questions": interview["questions"],
             "feedbacks": interview["feedbacks"],
+            "speech_stats": interview["speech_stats"],
             "created_at": interview["created_at"].isoformat(),
         })
 
@@ -325,6 +326,21 @@ def create_app() -> Flask:
             logger.exception("Erreur lors de l'analyse de la réponse")
             return jsonify({"error": str(exc)}), 500
 
+        try:
+            pacing = ai_service.analyze_speech_pacing(words)
+            feedback["pacing_segments"] = pacing["pacing_segments"]
+            feedback["hesitation_count"] = pacing["hesitation_count"]
+            feedback["hesitation_timestamps"] = pacing["hesitation_timestamps"]
+            feedback["filler_word_count"] = ai_service.count_filler_words(
+                transcription, interview["language"]
+            )
+        except Exception:
+            logger.exception("Erreur lors de l'analyse du débit de parole")
+            feedback["pacing_segments"] = []
+            feedback["hesitation_count"] = 0
+            feedback["hesitation_timestamps"] = []
+            feedback["filler_word_count"] = {}
+
         ideal_audio_filename = f"ideal_{interview_id}_{question_index}.mp3"
         ideal_audio_path = AUDIO_DIR / ideal_audio_filename
         ideal_audio_path.write_bytes(mp3_bytes)
@@ -385,7 +401,29 @@ def create_app() -> Flask:
 
         storage.save_feedback(interview_id, question_index, feedback)
 
-        return jsonify(feedback)
+        try:
+            interview_after = storage.get_interview(interview_id)
+            all_transcriptions = [
+                fb["transcription"] for fb in interview_after["feedbacks"].values()
+            ]
+            all_filler_counts = [
+                fb.get("filler_word_count", {}) for fb in interview_after["feedbacks"].values()
+            ]
+            tics = ai_service.detect_tics(all_transcriptions, interview["language"])
+            filler_totals = ai_service.merge_filler_counts(all_filler_counts)
+            advice = ""
+            if tics or filler_totals:
+                advice = ai_service.generate_tics_advice(tics, filler_totals, interview["language"])
+            speech_stats = {"tics": tics, "filler_totals": filler_totals, "advice": advice}
+        except Exception:
+            logger.exception("Erreur lors du calcul des tics de langage")
+            speech_stats = {"tics": [], "filler_totals": {}, "advice": ""}
+
+        storage.save_speech_stats(interview_id, speech_stats)
+
+        response_body = dict(feedback)
+        response_body["speech_stats"] = speech_stats
+        return jsonify(response_body)
 
     @app.post("/api/generate-neutral-answer")
     def generate_neutral_answer():

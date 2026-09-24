@@ -184,6 +184,121 @@ def test_analyze_answer_uses_interview_id(mock_transcribe, mock_analyze, mock_tt
 
 @patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
 @patch("services.ai_service.analyze_answer", return_value={
+    "transcription": "Alors euh, du coup je pense que du coup c'est bien.",
+    "analysis_content": "Bon",
+    "analysis_form": "OK",
+    "ideal_answer_text": "Idéal",
+    "ideal_plan_text": "Plan",
+})
+@patch(
+    "services.ai_service.transcribe_audio",
+    return_value=(
+        "Alors euh, du coup je pense que du coup c'est bien.",
+        [
+            # "Alors" lasts long enough (>= HESITATION_MIN_PRIOR_SPEECH_S) and the
+            # 0.5s gap before "euh" falls within the hesitation bounds, so this
+            # fixture deterministically triggers one detected hesitation.
+            {"word": "Alors", "start": 0.0, "end": 0.5},
+            {"word": "euh", "start": 1.0, "end": 1.2},
+        ],
+    ),
+)
+@patch("services.ai_service.generate_tics_advice", return_value="Essayez d'éviter \"du coup\".")
+def test_analyze_answer_returns_speech_stats(mock_advice, mock_transcribe, mock_analyze, mock_tts, client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/analyze-answer",
+        data={
+            "interview_id": itw["interview_id"],
+            "question_index": "0",
+            "duration_seconds": "30.0",
+            "recording_mode": "audio",
+            "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["hesitation_count"] == 1
+    assert body["pacing_segments"]
+    assert body["filler_word_count"]["euh"] == 1
+    assert body["speech_stats"]["tics"][0]["phrase"] == "du coup"
+    assert body["speech_stats"]["advice"] == "Essayez d'éviter \"du coup\"."
+
+    detail = client.get(f"/api/interviews/{itw['interview_id']}").get_json()
+    assert detail["speech_stats"]["tics"][0]["phrase"] == "du coup"
+
+
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.analyze_answer", return_value={
+    "transcription": "Une réponse fluide sans tic particulier.",
+    "analysis_content": "Bon",
+    "analysis_form": "OK",
+    "ideal_answer_text": "Idéal",
+    "ideal_plan_text": "Plan",
+})
+@patch("services.ai_service.transcribe_audio", return_value=("Une réponse fluide sans tic particulier.", []))
+def test_analyze_answer_skips_llm_advice_when_nothing_detected(mock_transcribe, mock_analyze, mock_tts, client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    with patch("services.ai_service.generate_tics_advice") as mock_advice:
+        resp = client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": itw["interview_id"],
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+        mock_advice.assert_not_called()
+
+    body = resp.get_json()
+    assert body["speech_stats"]["tics"] == []
+    assert body["speech_stats"]["advice"] == ""
+
+
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.analyze_answer", return_value={
+    "transcription": "Réponse",
+    "analysis_content": "Bon",
+    "analysis_form": "OK",
+    "ideal_answer_text": "Idéal",
+    "ideal_plan_text": "Plan",
+})
+@patch("services.ai_service.transcribe_audio", return_value=("Réponse", []))
+@patch("services.ai_service.analyze_speech_pacing", side_effect=RuntimeError("boom"))
+def test_analyze_answer_survives_pacing_failure(mock_pacing, mock_transcribe, mock_analyze, mock_tts, client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/analyze-answer",
+        data={
+            "interview_id": itw["interview_id"],
+            "question_index": "0",
+            "duration_seconds": "30.0",
+            "recording_mode": "audio",
+            "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["pacing_segments"] == []
+    assert body["hesitation_count"] == 0
+    assert body["speech_stats"] == {"tics": [], "filler_totals": {}, "advice": ""}
+
+
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.analyze_answer", return_value={
     "transcription": "Ma réponse",
     "analysis_content": "Bon contenu",
     "analysis_form": "Bonne forme",
