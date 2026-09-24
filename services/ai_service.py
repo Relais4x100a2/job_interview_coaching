@@ -278,9 +278,22 @@ def analyze_answer(
         "même si l'entretien est en anglais. Ce sont des feedbacks pour le candidat francophone. "
         "Chaque champ d'analyse doit être une chaîne de texte fluide (paragraphes), "
         "PAS un objet JSON imbriqué. "
-        f"Rédige ideal_answer_text en {lang_label} (la langue de l'entretien). "
+        f"Pour ideal_answer_text (en {lang_label}, la langue de l'entretien) : fais "
+        "du coaching, pas une réécriture générique. Pars de la transcription réelle "
+        "du candidat, garde ses idées fortes, son vécu concret et sa voix "
+        "personnelle quand ils sont pertinents, et améliore seulement ce qui doit "
+        "l'être (tics de langage, formulations floues ou maladroites, manque de "
+        "précision). Utilise le CV et l'offre pour combler des trous factuels ou "
+        "préciser des compétences, jamais pour remplacer le vécu du candidat par "
+        "une réponse générique et impersonnelle. Le résultat doit rester à la "
+        "première personne et sonner comme ce candidat, pas comme une réponse type. "
+        f"Pour ideal_plan_text (en {lang_label}) : résume en 3 à 5 points la "
+        "structure de cette réponse idéale, rédigé en Markdown à puces (une ligne "
+        "commençant par '- ' par point), sans reprendre le texte intégral de la "
+        "réponse. "
         "Réponds uniquement en JSON avec exactement ces clés : "
-        "transcription, analysis_content, analysis_form, ideal_answer_text. "
+        "transcription, analysis_content, analysis_form, ideal_answer_text, "
+        "ideal_plan_text. "
         "analysis_content (en français) : pertinence de la réponse, éléments du CV "
         "omis ou mal valorisés par rapport à l'offre. "
         "analysis_form (en français) : syntaxe, grammaire, tics de langage, clarté, "
@@ -304,6 +317,7 @@ def analyze_answer(
         "analysis_content",
         "analysis_form",
         "ideal_answer_text",
+        "ideal_plan_text",
     )
     for key in required_keys:
         if key not in data:
@@ -314,7 +328,60 @@ def analyze_answer(
         "analysis_content": str(data["analysis_content"]),
         "analysis_form": str(data["analysis_form"]),
         "ideal_answer_text": str(data["ideal_answer_text"]),
+        "ideal_plan_text": str(data["ideal_plan_text"]),
     }
+
+
+def generate_neutral_ideal_answer(
+    question: str,
+    cv: str,
+    job_offer: str,
+    context: str,
+    language: str,
+) -> str:
+    """Génère une réponse idéale neutre basée uniquement sur le CV et l'offre.
+
+    Args:
+        question: Question d'entretien posée.
+        cv: CV du candidat.
+        job_offer: Offre d'emploi.
+        context: Contexte de l'entretien.
+        language: Code langue ('fr' ou 'en').
+
+    Returns:
+        Texte de la réponse idéale neutre.
+
+    Raises:
+        ValueError: Si la clé attendue est absente de la réponse LLM.
+    """
+    lang_label = LANGUAGE_LABELS.get(language, language)
+
+    system_prompt = (
+        "Tu es un coach en entretien d'embauche. À partir du CV et de l'offre "
+        "d'emploi fournis, rédige une réponse idéale et neutre à la question "
+        "posée, comme si elle était donnée par un candidat solide dont le profil "
+        "correspond parfaitement au poste. "
+        "Le ton doit être neutre et sérieux, mais engageant : la réponse doit "
+        "donner envie d'embaucher la personne, sans tomber dans le survendu ni "
+        "le jargon corporate creux. "
+        "Base-toi uniquement sur les faits du CV et de l'offre, sans inventer "
+        "d'expérience absente du CV. "
+        f"Rédige la réponse en {lang_label} (la langue de l'entretien), à la "
+        "première personne. "
+        'Réponds uniquement en JSON avec exactement cette clé : "answer".'
+    )
+    user_prompt = (
+        f"Question : {question}\n\n"
+        f"CV :\n{cv}\n\n"
+        f"Offre d'emploi :\n{job_offer}\n\n"
+        f"Contexte de l'entretien :\n{context}"
+    )
+
+    raw = _call_llm(system_prompt, user_prompt)
+    data = _parse_json_response(raw)
+    if "answer" not in data:
+        raise ValueError("Clé manquante dans la réponse LLM : answer")
+    return str(data["answer"])
 
 
 def analyze_visual(

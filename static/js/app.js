@@ -11,6 +11,7 @@ const state = {
     questions: [],
     feedbacks: {},
     currentQuestionIndex: null,
+    validatedDirty: false,
     viewMode: null,
     isAnalyzing: false,
     isAbandoning: false,
@@ -233,8 +234,18 @@ function showConsultationMode(feedback) {
     state.viewMode = "consultation";
 }
 
+function confirmDiscardValidated() {
+    if (!state.validatedDirty) return true;
+    const confirmed = confirm(
+        "Vous avez des modifications non enregistrées dans le plan/la réponse validés. Continuer sans les enregistrer ?"
+    );
+    if (confirmed) state.validatedDirty = false;
+    return confirmed;
+}
+
 function goToSetup() {
     if (state.isAnalyzing) return;
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
     state.currentSessionId = null;
     state.offerTitle = null;
@@ -250,6 +261,7 @@ function goToSetup() {
 
 function goToOffer() {
     if (state.isAnalyzing) return;
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
     state.currentInterviewId = null;
     state.currentInterviewContext = null;
@@ -264,6 +276,7 @@ function goToOffer() {
 
 function goToQuestions() {
     if (state.isAnalyzing) return;
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
     state.currentQuestionIndex = null;
     renderQuestions();
@@ -741,6 +754,11 @@ function renderQuestions() {
     const grid = document.getElementById("questions-grid");
     grid.innerHTML = "";
 
+    document.getElementById("export-plans-link").href =
+        `/api/interviews/${state.currentInterviewId}/export/plans`;
+    document.getElementById("export-answers-link").href =
+        `/api/interviews/${state.currentInterviewId}/export/answers`;
+
     state.questions.forEach((question, index) => {
         const answered = isQuestionAnswered(index);
         const card = document.createElement("button");
@@ -777,6 +795,7 @@ function selectQuestion(index) {
     if (existing) {
         showConsultationMode(existing);
     } else {
+        updateRecordingReferencePanel(index);
         resetRecordingView();
         showRecordingMode();
     }
@@ -804,7 +823,9 @@ function resetRecordingView() {
 
 function startRerecording() {
     if (state.isAnalyzing) return;
+    if (!confirmDiscardValidated()) return;
     stopMicrophone();
+    updateRecordingReferencePanel(state.currentQuestionIndex);
     resetRecordingView();
     showRecordingMode();
 }
@@ -1067,6 +1088,11 @@ function displayFeedback(data) {
     document.getElementById("feedback-content").innerHTML = marked.parse(data.analysis_content || "");
     document.getElementById("feedback-form").innerHTML = marked.parse(data.analysis_form || "");
     document.getElementById("feedback-ideal").textContent = data.ideal_answer_text;
+    document.getElementById("feedback-plan").textContent = data.ideal_plan_text || "";
+    document.getElementById("validated-plan-input").value = data.validated_plan_text ?? "";
+    document.getElementById("validated-answer-input").value = data.validated_answer_text ?? "";
+    hideError("validated-save-error");
+    state.validatedDirty = false;
 
     if (data.user_audio_url) {
         document.getElementById("user-audio").src = `${data.user_audio_url}?t=${Date.now()}`;
@@ -1104,11 +1130,133 @@ function displayFeedback(data) {
         userVideo.classList.add("hidden");
         userAudio.classList.remove("hidden");
     }
+
+    hideError("neutral-answer-error");
+    const neutralBlock = document.getElementById("neutral-answer-block");
+    const neutralBtn = document.getElementById("btn-neutral-answer");
+    if (data.neutral_answer_text) {
+        document.getElementById("feedback-neutral").textContent = data.neutral_answer_text;
+        if (data.neutral_audio_url) {
+            document.getElementById("neutral-audio").src = `${data.neutral_audio_url}?t=${Date.now()}`;
+        }
+        neutralBlock.classList.remove("hidden");
+        neutralBtn.textContent = "Régénérer la réponse neutre";
+    } else {
+        neutralBlock.classList.add("hidden");
+        neutralBtn.textContent = "Voir une réponse neutre basée sur le CV/l'offre";
+    }
+    neutralBtn.disabled = false;
+}
+
+async function generateNeutralAnswer() {
+    const btn = document.getElementById("btn-neutral-answer");
+    hideError("neutral-answer-error");
+    btn.disabled = true;
+    const previousLabel = btn.textContent;
+    btn.textContent = "Génération en cours...";
+
+    try {
+        const response = await fetch("/api/generate-neutral-answer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                interview_id: state.currentInterviewId,
+                question_index: state.currentQuestionIndex,
+            }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Erreur lors de la génération.");
+        }
+
+        document.getElementById("feedback-neutral").textContent = data.neutral_answer_text;
+        document.getElementById("neutral-audio").src = `${data.neutral_audio_url}?t=${Date.now()}`;
+        document.getElementById("neutral-answer-block").classList.remove("hidden");
+
+        const feedback = state.feedbacks[state.currentQuestionIndex];
+        if (feedback) {
+            feedback.neutral_answer_text = data.neutral_answer_text;
+            feedback.neutral_audio_url = data.neutral_audio_url;
+        }
+        btn.textContent = "Régénérer la réponse neutre";
+    } catch (err) {
+        showError("neutral-answer-error", err.message);
+        btn.textContent = previousLabel;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function saveValidated() {
+    const btn = document.getElementById("btn-save-validated");
+    hideError("validated-save-error");
+    btn.disabled = true;
+    const previousLabel = btn.textContent;
+
+    try {
+        const response = await fetch("/api/save-validated", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                interview_id: state.currentInterviewId,
+                question_index: state.currentQuestionIndex,
+                validated_plan_text: document.getElementById("validated-plan-input").value,
+                validated_answer_text: document.getElementById("validated-answer-input").value,
+            }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Erreur lors de l'enregistrement.");
+        }
+
+        const feedback = state.feedbacks[state.currentQuestionIndex];
+        if (feedback) {
+            feedback.validated_plan_text = data.validated_plan_text;
+            feedback.validated_answer_text = data.validated_answer_text;
+        }
+        state.validatedDirty = false;
+        btn.textContent = "Enregistré ✓";
+        setTimeout(() => { btn.textContent = previousLabel; }, 1500);
+    } catch (err) {
+        showError("validated-save-error", err.message);
+        btn.textContent = previousLabel;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function updateRecordingReferencePanel(index) {
+    const panel = document.getElementById("recording-reference-panel");
+    const content = document.getElementById("recording-reference-content");
+    const toggle = document.getElementById("recording-reference-toggle");
+    const feedback = getFeedback(index);
+    const plan = feedback ? feedback.validated_plan_text : "";
+    const answer = feedback ? feedback.validated_answer_text : "";
+
+    if (!plan && !answer) {
+        panel.classList.add("hidden");
+        return;
+    }
+
+    document.getElementById("recording-reference-plan").textContent = plan || "";
+    document.getElementById("recording-reference-answer").textContent = answer || "";
+    content.classList.add("hidden");
+    toggle.textContent = "Afficher mes notes validées";
+    panel.classList.remove("hidden");
+}
+
+function toggleRecordingReferencePanel() {
+    const content = document.getElementById("recording-reference-content");
+    const toggle = document.getElementById("recording-reference-toggle");
+    const isHidden = content.classList.contains("hidden");
+    content.classList.toggle("hidden", !isHidden);
+    toggle.textContent = isHidden ? "Masquer mes notes validées" : "Afficher mes notes validées";
 }
 
 document.getElementById("btn-create-offer").addEventListener("click", createOffer);
 document.getElementById("btn-record").addEventListener("click", toggleRecording);
 document.getElementById("btn-rerecord").addEventListener("click", startRerecording);
+document.getElementById("btn-neutral-answer").addEventListener("click", generateNeutralAnswer);
 document.getElementById("btn-back-home-offer").addEventListener("click", goToSetup);
 document.getElementById("nav-home").addEventListener("click", goToSetup);
 document.getElementById("btn-back-to-offer").addEventListener("click", goToOffer);
@@ -1127,6 +1275,17 @@ document.getElementById("breadcrumb").addEventListener("click", (e) => {
     if (!offerEl || !state.currentSessionId) return;
     e.stopPropagation();
     startTitleEdit(offerEl, state.currentSessionId, () => loadSessions());
+});
+
+document.getElementById("btn-save-validated").addEventListener("click", saveValidated);
+document.getElementById("recording-reference-toggle").addEventListener("click", (e) => {
+    e.preventDefault();
+    toggleRecordingReferencePanel();
+});
+["validated-plan-input", "validated-answer-input"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", () => {
+        state.validatedDirty = true;
+    });
 });
 
 document.querySelectorAll('input[name="recording-mode"]').forEach((radio) => {

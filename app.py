@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from werkzeug.exceptions import BadRequest, NotFound
 
 from services import ai_service
@@ -34,6 +34,35 @@ EXT_MAP = {
 }
 
 storage = create_storage(BASE_DIR)
+
+
+def _build_export_markdown(interview: dict, field_key: str) -> str:
+    """Construit le contenu Markdown d'un export de plans ou réponses validés.
+
+    Args:
+        interview: Entretien (avec `questions` et `feedbacks`).
+        field_key: `validated_plan_text` ou `validated_answer_text`.
+
+    Returns:
+        Contenu Markdown, une section par question ayant du contenu validé
+        non vide, dans l'ordre des questions de l'entretien.
+    """
+    questions = interview.get("questions", [])
+    feedbacks = interview.get("feedbacks", {})
+    sections = []
+    for index, question in enumerate(questions):
+        feedback = feedbacks.get(index)
+        if not feedback:
+            continue
+        content = feedback.get(field_key)
+        if not content:
+            continue
+        sections.append(f"## Question {index + 1} : {question}\n\n{content}")
+
+    if not sections:
+        return "Aucun contenu validé pour le moment.\n"
+
+    return "\n\n".join(sections) + "\n"
 
 
 def create_app() -> Flask:
@@ -334,9 +363,142 @@ def create_app() -> Flask:
                     video_path.write_bytes(video_bytes)
                     feedback["user_video_url"] = f"/static/video/{user_video_filename}"
 
+        existing_feedback = storage.get_interview(interview_id)["feedbacks"].get(
+            question_index, {}
+        )
+        for validated_key, generated_key in (
+            ("validated_plan_text", "ideal_plan_text"),
+            ("validated_answer_text", "ideal_answer_text"),
+        ):
+            if validated_key in existing_feedback:
+                feedback[validated_key] = existing_feedback[validated_key]
+            else:
+                feedback[validated_key] = feedback[generated_key]
+
         storage.save_feedback(interview_id, question_index, feedback)
 
         return jsonify(feedback)
+
+    @app.post("/api/generate-neutral-answer")
+    def generate_neutral_answer():
+        """Génère une réponse idéale neutre (CV/offre) pour une question donnée."""
+        data = request.get_json(silent=True) or {}
+        interview_id = (data.get("interview_id") or "").strip()
+        question_index_raw = data.get("question_index")
+
+        if not interview_id:
+            raise BadRequest("Le champ 'interview_id' est obligatoire.")
+        if question_index_raw is None:
+            raise BadRequest("Le champ 'question_index' est obligatoire.")
+
+        try:
+            question_index = int(question_index_raw)
+        except (TypeError, ValueError) as exc:
+            raise BadRequest("question_index invalide.") from exc
+
+        interview = storage.get_interview_with_session(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
+
+        questions = interview.get("questions", [])
+        if question_index < 0 or question_index >= len(questions):
+            raise BadRequest("Index de question invalide.")
+
+        try:
+            neutral_text = ai_service.generate_neutral_ideal_answer(
+                question=questions[question_index],
+                cv=interview["cv"],
+                job_offer=interview["job_offer"],
+                context=interview["context"],
+                language=interview["language"],
+            )
+            mp3_bytes = ai_service.synthesize_speech(neutral_text)
+        except Exception as exc:
+            logger.exception("Erreur lors de la génération de la réponse neutre")
+            return jsonify({"error": str(exc)}), 500
+
+        audio_filename = f"neutral_{interview_id}_{question_index}.mp3"
+        (AUDIO_DIR / audio_filename).write_bytes(mp3_bytes)
+        audio_url = f"/static/audio/{audio_filename}"
+
+        feedback = storage.get_interview(interview_id)["feedbacks"].get(question_index, {})
+        feedback["neutral_answer_text"] = neutral_text
+        feedback["neutral_audio_url"] = audio_url
+        storage.save_feedback(interview_id, question_index, feedback)
+
+        return jsonify({
+            "neutral_answer_text": neutral_text,
+            "neutral_audio_url": audio_url,
+        })
+
+    @app.post("/api/save-validated")
+    def save_validated():
+        """Enregistre le plan et la réponse validés par l'utilisateur pour une question."""
+        data = request.get_json(silent=True) or {}
+        interview_id = (data.get("interview_id") or "").strip()
+        question_index_raw = data.get("question_index")
+        validated_plan_text = data.get("validated_plan_text")
+        validated_answer_text = data.get("validated_answer_text")
+
+        if not interview_id:
+            raise BadRequest("Le champ 'interview_id' est obligatoire.")
+        if question_index_raw is None:
+            raise BadRequest("Le champ 'question_index' est obligatoire.")
+        if validated_plan_text is None:
+            raise BadRequest("Le champ 'validated_plan_text' est obligatoire.")
+        if validated_answer_text is None:
+            raise BadRequest("Le champ 'validated_answer_text' est obligatoire.")
+
+        try:
+            question_index = int(question_index_raw)
+        except (TypeError, ValueError) as exc:
+            raise BadRequest("question_index invalide.") from exc
+
+        interview = storage.get_interview_with_session(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
+
+        feedback = interview["feedbacks"].get(question_index)
+        if feedback is None:
+            raise NotFound("Aucune analyse existante pour cette question.")
+
+        feedback["validated_plan_text"] = str(validated_plan_text)
+        feedback["validated_answer_text"] = str(validated_answer_text)
+        storage.save_feedback(interview_id, question_index, feedback)
+
+        return jsonify(feedback)
+
+    @app.get("/api/interviews/<interview_id>/export/plans")
+    def export_validated_plans(interview_id: str):
+        """Exporte tous les plans validés d'un entretien au format Markdown."""
+        interview = storage.get_interview(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
+
+        content = _build_export_markdown(interview, "validated_plan_text")
+        return Response(
+            content,
+            mimetype="text/markdown",
+            headers={
+                "Content-Disposition": f'attachment; filename="{interview_id}-plans.md"'
+            },
+        )
+
+    @app.get("/api/interviews/<interview_id>/export/answers")
+    def export_validated_answers(interview_id: str):
+        """Exporte toutes les réponses validées d'un entretien au format Markdown."""
+        interview = storage.get_interview(interview_id)
+        if interview is None:
+            raise NotFound("Entretien introuvable.")
+
+        content = _build_export_markdown(interview, "validated_answer_text")
+        return Response(
+            content,
+            mimetype="text/markdown",
+            headers={
+                "Content-Disposition": f'attachment; filename="{interview_id}-reponses.md"'
+            },
+        )
 
     @app.errorhandler(BadRequest)
     def handle_bad_request(exc: BadRequest):

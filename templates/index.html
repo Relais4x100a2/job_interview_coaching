@@ -181,6 +181,16 @@
             </button>
             <h2 class="text-xl font-semibold text-slate-700">Choisissez une question</h2>
             <div id="questions-grid" class="grid gap-3 sm:grid-cols-2"></div>
+            <div class="flex gap-4 pt-2">
+                <a id="export-plans-link" href="#" download
+                    class="text-sm text-indigo-600 hover:underline">
+                    Exporter tous les plans validés
+                </a>
+                <a id="export-answers-link" href="#" download
+                    class="text-sm text-indigo-600 hover:underline">
+                    Exporter toutes les réponses validées
+                </a>
+            </div>
         </section>
 
         <!-- Écran 4 : Enregistrement et feedback -->
@@ -197,6 +207,21 @@
 
             <!-- Mode enregistrement -->
             <div id="recording-mode" class="space-y-4">
+                <div id="recording-reference-panel" class="hidden border border-dashed border-slate-300 bg-slate-50/60 rounded-xl p-4 text-slate-500">
+                    <a id="recording-reference-toggle" href="#" class="text-sm text-indigo-500 hover:underline">
+                        Afficher mes notes validées
+                    </a>
+                    <div id="recording-reference-content" class="hidden mt-3 space-y-3">
+                        <div>
+                            <h4 class="font-semibold text-slate-500 text-sm mb-1">Plan validé</h4>
+                            <p id="recording-reference-plan" class="whitespace-pre-wrap text-sm"></p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-500 text-sm mb-1">Réponse validée</h4>
+                            <p id="recording-reference-answer" class="whitespace-pre-wrap text-sm"></p>
+                        </div>
+                    </div>
+                </div>
                 <div id="recording-controls" class="bg-white rounded-xl shadow-md p-6 text-center space-y-4">
                     <div id="mode-selector" class="flex justify-center gap-4 mb-4">
                         <label class="flex items-center gap-2 cursor-pointer">
@@ -256,9 +281,38 @@
                     <div id="feedback-visual" class="prose-feedback text-slate-600 bg-amber-50 p-3 rounded-lg"></div>
                 </div>
                 <div>
-                    <h3 class="font-semibold text-slate-700 mb-1">Réponse idéale</h3>
+                    <h3 class="font-semibold text-slate-700 mb-1">Plan idéal selon LLM</h3>
+                    <p id="feedback-plan" class="text-slate-600 bg-indigo-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-slate-700 mb-1">Réponse idéale selon LLM</h3>
                     <p id="feedback-ideal" class="text-slate-600 bg-indigo-50 p-3 rounded-lg whitespace-pre-wrap"></p>
                     <audio id="ideal-audio" controls class="w-full mt-3"></audio>
+                    <button id="btn-neutral-answer" type="button"
+                        class="mt-3 text-sm text-indigo-600 hover:underline">
+                        Voir une réponse neutre basée sur le CV/l'offre
+                    </button>
+                    <div id="neutral-answer-block" class="hidden mt-3">
+                        <h3 class="font-semibold text-slate-700 mb-1">Réponse neutre (CV/offre)</h3>
+                        <p id="feedback-neutral" class="text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap"></p>
+                        <audio id="neutral-audio" controls class="w-full mt-3"></audio>
+                    </div>
+                    <p id="neutral-answer-error" class="text-red-600 text-sm mt-2 hidden"></p>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-slate-700 mb-1">Plan validé (vous)</h3>
+                    <textarea id="validated-plan-input" rows="4"
+                        class="w-full text-slate-700 border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-slate-700 mb-1">Réponse validée (vous)</h3>
+                    <textarea id="validated-answer-input" rows="6"
+                        class="w-full text-slate-700 border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+                    <button id="btn-save-validated" type="button"
+                        class="mt-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-lg transition">
+                        Enregistrer
+                    </button>
+                    <p id="validated-save-error" class="text-red-600 text-sm mt-2 hidden"></p>
                 </div>
                 <div class="flex gap-3 pt-2">
                     <button id="btn-rerecord" type="button"

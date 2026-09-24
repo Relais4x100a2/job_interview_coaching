@@ -72,3 +72,100 @@ def test_format_offer_content_missing_key_raises(mock_call_llm):
         assert False, "Should have raised ValueError"
     except ValueError as exc:
         assert "job_offer" in str(exc)
+
+
+@patch.object(ai_service, "_call_llm")
+def test_analyze_answer_prompt_asks_to_build_on_candidate_answer(mock_call_llm):
+    mock_call_llm.return_value = (
+        '{"transcription": "Réponse", "analysis_content": "Bon", '
+        '"analysis_form": "OK", "ideal_answer_text": "Idéal", '
+        '"ideal_plan_text": "- Point 1"}'
+    )
+
+    ai_service.analyze_answer(
+        question="Présentez-vous.",
+        transcription="Réponse du candidat",
+        cv="CV",
+        job_offer="Offre",
+        context="RH",
+        language="fr",
+        duration_seconds=30.0,
+    )
+
+    system_prompt = mock_call_llm.call_args[0][0]
+    assert "transcription réelle" in system_prompt
+    assert "voix personnelle" in system_prompt
+
+
+@patch.object(ai_service, "_call_llm")
+def test_analyze_answer_includes_ideal_plan_text(mock_call_llm):
+    mock_call_llm.return_value = (
+        '{"transcription": "Réponse", "analysis_content": "Bon", '
+        '"analysis_form": "OK", "ideal_answer_text": "Idéal", '
+        '"ideal_plan_text": "- Point 1\\n- Point 2"}'
+    )
+
+    result = ai_service.analyze_answer(
+        question="Présentez-vous.",
+        transcription="Réponse du candidat",
+        cv="CV",
+        job_offer="Offre",
+        context="RH",
+        language="fr",
+        duration_seconds=30.0,
+    )
+
+    assert result["ideal_plan_text"] == "- Point 1\n- Point 2"
+
+
+@patch.object(ai_service, "_call_llm")
+def test_analyze_answer_missing_ideal_plan_text_raises(mock_call_llm):
+    mock_call_llm.return_value = (
+        '{"transcription": "Réponse", "analysis_content": "Bon", '
+        '"analysis_form": "OK", "ideal_answer_text": "Idéal"}'
+    )
+
+    try:
+        ai_service.analyze_answer(
+            question="Présentez-vous.",
+            transcription="Réponse du candidat",
+            cv="CV",
+            job_offer="Offre",
+            context="RH",
+            language="fr",
+            duration_seconds=30.0,
+        )
+        assert False, "Should have raised ValueError"
+    except ValueError as exc:
+        assert "ideal_plan_text" in str(exc)
+
+
+@patch.object(ai_service, "_call_llm")
+def test_generate_neutral_ideal_answer_returns_text(mock_call_llm):
+    mock_call_llm.return_value = '{"answer": "Réponse neutre engageante."}'
+
+    result = ai_service.generate_neutral_ideal_answer(
+        question="Présentez-vous.",
+        cv="CV",
+        job_offer="Offre",
+        context="RH",
+        language="fr",
+    )
+
+    assert result == "Réponse neutre engageante."
+    mock_call_llm.assert_called_once()
+    system_prompt = mock_call_llm.call_args[0][0]
+    assert "engageant" in system_prompt
+
+
+@patch.object(ai_service, "_call_llm")
+def test_generate_neutral_ideal_answer_missing_key_raises(mock_call_llm):
+    mock_call_llm.return_value = "{}"
+
+    try:
+        ai_service.generate_neutral_ideal_answer(
+            question="Q", cv="CV", job_offer="Offre", context="RH", language="fr"
+        )
+        assert False, "Should have raised ValueError"
+    except ValueError as exc:
+        assert "answer" in str(exc)
