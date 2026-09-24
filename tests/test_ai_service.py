@@ -296,3 +296,46 @@ def test_merge_filler_counts_sums_across_answers():
 
 def test_merge_filler_counts_empty_list_returns_empty_dict():
     assert ai_service.merge_filler_counts([]) == {}
+
+
+def test_detect_tics_finds_repeated_ngram():
+    transcriptions = [
+        "Du coup j'ai fait ça du coup c'était bien.",
+        "Et du coup on a validé le projet.",
+    ]
+    tics = ai_service.detect_tics(transcriptions, "fr")
+    phrases = {t["phrase"]: t["count"] for t in tics}
+    assert phrases["du coup"] == 3
+
+
+def test_detect_tics_excludes_single_occurrence():
+    transcriptions = ["Une tournure unique qui ne revient jamais."]
+    tics = ai_service.detect_tics(transcriptions, "fr")
+    assert tics == []
+
+
+def test_detect_tics_filters_all_stopword_ngrams():
+    transcriptions = [
+        "je pense que je pense que",
+    ]
+    tics = ai_service.detect_tics(transcriptions, "fr")
+    assert all(t["phrase"] != "que je" for t in tics)
+
+
+def test_detect_tics_english_you_know_not_filtered_as_stopwords():
+    transcriptions = [
+        "You know I think you know this is right.",
+        "You know it works well.",
+    ]
+    tics = ai_service.detect_tics(transcriptions, "en")
+    phrases = {t["phrase"] for t in tics}
+    assert "you know" in phrases
+
+
+def test_detect_tics_sorted_by_count_descending():
+    transcriptions = [
+        "du coup du coup du coup en fait en fait",
+    ]
+    tics = ai_service.detect_tics(transcriptions, "fr")
+    counts = [t["count"] for t in tics]
+    assert counts == sorted(counts, reverse=True)

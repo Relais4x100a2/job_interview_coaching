@@ -342,6 +342,62 @@ def merge_filler_counts(counts_list: list[dict[str, int]]) -> dict[str, int]:
     return merged
 
 
+TIC_NGRAM_MIN_LENGTH = 2
+TIC_NGRAM_MAX_LENGTH = 4
+TIC_MIN_OCCURRENCES = 2
+
+STOPWORDS = {
+    "fr": {
+        "le", "la", "les", "un", "une", "des", "de", "du", "et", "à", "au",
+        "aux", "que", "qui", "est", "je", "tu", "il", "elle", "on", "nous",
+        "vous", "ils", "elles", "ce", "cette", "ces", "dans", "pour", "par",
+        "avec", "sur", "pas", "ne", "se", "sa", "son", "ses", "mon", "ma",
+        "mes", "ton", "ta", "tes", "y", "en",
+    },
+    "en": {
+        "the", "a", "an", "and", "to", "of", "in", "on", "for", "with",
+        "is", "are", "was", "were", "i", "you", "he", "she", "it", "we",
+        "they", "this", "that", "these", "those", "at", "by", "as", "be",
+        "been", "have", "has", "had", "do", "does", "did", "not", "so", "if",
+    },
+}
+
+
+def detect_tics(transcriptions: list[str], language: str) -> list[dict]:
+    """Détecte les tournures (n-grammes) qui reviennent dans des transcriptions.
+
+    Args:
+        transcriptions: Liste de textes transcrits (une réponse, ou toutes
+            les réponses d'un entretien pour l'agrégat).
+        language: Langue de l'entretien (`fr` ou `en`), pour choisir la
+            liste de mots vides à filtrer.
+
+    Returns:
+        Liste `{phrase, count}` pour les n-grammes (2 à 4 mots) apparaissant
+        au moins `TIC_MIN_OCCURRENCES` fois et non composés uniquement de
+        mots vides, triée par occurrences décroissantes.
+    """
+    stopwords = STOPWORDS.get(language, STOPWORDS["fr"])
+    counts: dict[str, int] = {}
+    for text in transcriptions:
+        tokens = re.findall(r"[\w']+", text.lower())
+        for n in range(TIC_NGRAM_MIN_LENGTH, TIC_NGRAM_MAX_LENGTH + 1):
+            for i in range(len(tokens) - n + 1):
+                ngram_tokens = tokens[i:i + n]
+                if all(tok in stopwords for tok in ngram_tokens):
+                    continue
+                phrase = " ".join(ngram_tokens)
+                counts[phrase] = counts.get(phrase, 0) + 1
+
+    tics = [
+        {"phrase": phrase, "count": count}
+        for phrase, count in counts.items()
+        if count >= TIC_MIN_OCCURRENCES
+    ]
+    tics.sort(key=lambda t: t["count"], reverse=True)
+    return tics
+
+
 def analyze_answer(
     question: str,
     transcription: str,
