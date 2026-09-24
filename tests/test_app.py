@@ -166,7 +166,7 @@ def test_delete_interview(client):
     "ideal_answer_text": "Idéal",
     "ideal_plan_text": "Plan",
 })
-@patch("services.ai_service.transcribe_audio", return_value="Réponse")
+@patch("services.ai_service.transcribe_audio", return_value=("Réponse", []))
 def test_analyze_answer_uses_interview_id(mock_transcribe, mock_analyze, mock_tts, client):
     offer = _create_offer(client)
     itw = _add_interview(client, offer["session_id"])
@@ -191,7 +191,7 @@ def test_analyze_answer_uses_interview_id(mock_transcribe, mock_analyze, mock_tt
     "ideal_plan_text": "Plan",
 })
 @patch("services.ai_service.analyze_visual", return_value="Bon contact visuel.")
-@patch("services.ai_service.transcribe_audio", return_value="Ma réponse")
+@patch("services.ai_service.transcribe_audio", return_value=("Ma réponse", []))
 def test_analyze_answer_video_mode(mock_transcribe, mock_visual, mock_analyze, mock_tts, client):
     offer = _create_offer(client)
     itw = _add_interview(client, offer["session_id"])
@@ -284,7 +284,7 @@ def test_generate_neutral_answer_persists_on_feedback(client):
                 "ideal_plan_text": "Plan",
             },
         ),
-        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.transcribe_audio", return_value=("Réponse", [])),
     ):
         client.post(
             "/api/analyze-answer",
@@ -321,7 +321,7 @@ def test_generate_neutral_answer_persists_on_feedback(client):
     "ideal_answer_text": "Idéal",
     "ideal_plan_text": "- Point 1\n- Point 2",
 })
-@patch("services.ai_service.transcribe_audio", return_value="Réponse")
+@patch("services.ai_service.transcribe_audio", return_value=("Réponse", []))
 def test_analyze_answer_seeds_validated_fields_on_first_call(mock_transcribe, mock_analyze, mock_tts, client):
     offer = _create_offer(client)
     itw = _add_interview(client, offer["session_id"])
@@ -350,7 +350,7 @@ def test_analyze_answer_preserves_validated_fields_on_rerecord(client):
 
     with (
         patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
-        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.transcribe_audio", return_value=("Réponse", [])),
         patch("services.ai_service.analyze_answer", return_value={
             "transcription": "Réponse",
             "analysis_content": "Bon",
@@ -378,7 +378,7 @@ def test_analyze_answer_preserves_validated_fields_on_rerecord(client):
 
     with (
         patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
-        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.transcribe_audio", return_value=("Réponse", [])),
         patch("services.ai_service.analyze_answer", return_value={
             "transcription": "Réponse",
             "analysis_content": "Bon",
@@ -413,7 +413,7 @@ def test_analyze_answer_preserves_empty_validated_string(client):
 
     with (
         patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
-        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.transcribe_audio", return_value=("Réponse", [])),
         patch("services.ai_service.analyze_answer", return_value={
             "transcription": "Réponse",
             "analysis_content": "Bon",
@@ -440,7 +440,7 @@ def test_analyze_answer_preserves_empty_validated_string(client):
 
     with (
         patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
-        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.transcribe_audio", return_value=("Réponse", [])),
         patch("services.ai_service.analyze_answer", return_value={
             "transcription": "Réponse",
             "analysis_content": "Bon",
@@ -499,7 +499,7 @@ def test_save_validated_updates_fields_only(client):
 
     with (
         patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100),
-        patch("services.ai_service.transcribe_audio", return_value="Réponse"),
+        patch("services.ai_service.transcribe_audio", return_value=("Réponse", [])),
         patch("services.ai_service.analyze_answer", return_value={
             "transcription": "Réponse",
             "analysis_content": "Bon contenu",

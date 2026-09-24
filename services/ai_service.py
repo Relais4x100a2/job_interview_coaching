@@ -6,6 +6,7 @@ import base64
 import json
 import logging
 import os
+import re
 from io import BytesIO
 from typing import Any
 
@@ -224,15 +225,15 @@ def format_offer_content(cv: str, job_offer: str) -> tuple[str, str]:
     return str(data["cv"]), str(data["job_offer"])
 
 
-def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
-    """Transcrit un fichier audio en texte via Whisper.
+def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> tuple[str, list[dict]]:
+    """Transcrit un fichier audio en texte via Whisper, avec timestamps par mot.
 
     Args:
         audio_bytes: Contenu binaire de l'audio.
         filename: Nom du fichier pour l'API Whisper.
 
     Returns:
-        Transcription textuelle.
+        Tuple (texte transcrit, liste de mots `{word, start, end}`).
     """
     client = _get_openai_client()
     audio_file = BytesIO(audio_bytes)
@@ -240,8 +241,14 @@ def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
     transcription = client.audio.transcriptions.create(
         model="whisper-1",
         file=audio_file,
+        response_format="verbose_json",
+        timestamp_granularities=["word"],
     )
-    return transcription.text.strip()
+    words = [
+        {"word": w.word, "start": w.start, "end": w.end}
+        for w in (transcription.words or [])
+    ]
+    return transcription.text.strip(), words
 
 
 def analyze_answer(

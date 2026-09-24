@@ -5,6 +5,44 @@ from services import ai_service
 FAKE_FRAME = b"\xff\xd8\xff\xe0" + b"\x00" * 100  # minimal JPEG header bytes
 
 
+@patch.object(ai_service, "_get_openai_client")
+def test_transcribe_audio_returns_text_and_words(mock_client_fn):
+    mock_client = MagicMock()
+    mock_client_fn.return_value = mock_client
+    mock_word = MagicMock()
+    mock_word.word = "Bonjour"
+    mock_word.start = 0.0
+    mock_word.end = 0.5
+    mock_response = MagicMock()
+    mock_response.text = "Bonjour"
+    mock_response.words = [mock_word]
+    mock_client.audio.transcriptions.create.return_value = mock_response
+
+    text, words = ai_service.transcribe_audio(b"\x00" * 10, filename="test.webm")
+
+    assert text == "Bonjour"
+    assert words == [{"word": "Bonjour", "start": 0.0, "end": 0.5}]
+    call_kwargs = mock_client.audio.transcriptions.create.call_args[1]
+    assert call_kwargs["model"] == "whisper-1"
+    assert call_kwargs["response_format"] == "verbose_json"
+    assert call_kwargs["timestamp_granularities"] == ["word"]
+
+
+@patch.object(ai_service, "_get_openai_client")
+def test_transcribe_audio_handles_missing_words(mock_client_fn):
+    mock_client = MagicMock()
+    mock_client_fn.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.text = "Silence"
+    mock_response.words = None
+    mock_client.audio.transcriptions.create.return_value = mock_response
+
+    text, words = ai_service.transcribe_audio(b"\x00" * 10)
+
+    assert text == "Silence"
+    assert words == []
+
+
 def _mock_vision_response(text: str) -> MagicMock:
     choice = MagicMock()
     choice.message.content = text

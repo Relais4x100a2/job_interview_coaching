@@ -310,7 +310,7 @@ def create_app() -> Flask:
         user_audio_path.write_bytes(audio_bytes)
 
         try:
-            transcription = ai_service.transcribe_audio(audio_bytes, filename)
+            transcription, words = ai_service.transcribe_audio(audio_bytes, filename)
             feedback = ai_service.analyze_answer(
                 question=question,
                 transcription=transcription,
