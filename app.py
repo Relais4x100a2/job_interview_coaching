@@ -419,7 +419,10 @@ def create_app() -> Flask:
             logger.exception("Erreur lors du calcul des tics de langage")
             speech_stats = {"tics": [], "filler_totals": {}, "advice": ""}
 
-        storage.save_speech_stats(interview_id, speech_stats)
+        try:
+            storage.save_speech_stats(interview_id, speech_stats)
+        except Exception:
+            logger.exception("Erreur lors de la sauvegarde des statistiques d'élocution")
 
         response_body = dict(feedback)
         response_body["speech_stats"] = speech_stats

@@ -299,6 +299,131 @@ def test_analyze_answer_survives_pacing_failure(mock_pacing, mock_transcribe, mo
 
 @patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
 @patch("services.ai_service.analyze_answer", return_value={
+    "transcription": "Alors euh, du coup je pense que du coup c'est bien.",
+    "analysis_content": "Bon",
+    "analysis_form": "OK",
+    "ideal_answer_text": "Idéal",
+    "ideal_plan_text": "Plan",
+})
+@patch(
+    "services.ai_service.transcribe_audio",
+    return_value=("Alors euh, du coup je pense que du coup c'est bien.", []),
+)
+@patch("services.ai_service.generate_tics_advice", side_effect=RuntimeError("boom"))
+def test_analyze_answer_survives_tics_advice_failure(
+    mock_advice, mock_transcribe, mock_analyze, mock_tts, client
+):
+    """A crash in generate_tics_advice must degrade speech_stats, not 500 the request.
+
+    The fixture transcription repeats "du coup" (a real tic, TIC_MIN_OCCURRENCES=2)
+    and contains "euh" (a real filler word), so both tics and filler_totals would be
+    non-empty if generate_tics_advice succeeded — this actually exercises the
+    except-branch reset to empty structures, not a path that was already empty.
+    """
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    resp = client.post(
+        "/api/analyze-answer",
+        data={
+            "interview_id": itw["interview_id"],
+            "question_index": "0",
+            "duration_seconds": "30.0",
+            "recording_mode": "audio",
+            "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["speech_stats"] == {"tics": [], "filler_totals": {}, "advice": ""}
+
+
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.analyze_answer")
+@patch("services.ai_service.transcribe_audio")
+def test_analyze_answer_rerecording_does_not_double_count_filler_totals(
+    mock_transcribe, mock_analyze, mock_tts, client
+):
+    """Re-analyzing the same question must not sum its filler counts twice.
+
+    storage.save_speech_stats recomputes filler_totals from ALL stored feedbacks;
+    since save_feedback overwrites the feedback for a given question_index, the
+    second analysis of the same question must replace (not add to) its
+    contribution to the interview-level filler_totals.
+    """
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"])
+
+    def _post_answer(transcription):
+        mock_transcribe.return_value = (transcription, [])
+        mock_analyze.return_value = {
+            "transcription": transcription,
+            "analysis_content": "Bon",
+            "analysis_form": "OK",
+            "ideal_answer_text": "Idéal",
+            "ideal_plan_text": "Plan",
+        }
+        return client.post(
+            "/api/analyze-answer",
+            data={
+                "interview_id": itw["interview_id"],
+                "question_index": "0",
+                "duration_seconds": "30.0",
+                "recording_mode": "audio",
+                "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    first_resp = _post_answer("Alors euh, je pense que c'est bien.")
+    assert first_resp.status_code == 200
+    assert first_resp.get_json()["speech_stats"]["filler_totals"] == {"euh": 1}
+
+    second_resp = _post_answer("Voilà, en fait, ça va très bien.")
+    assert second_resp.status_code == 200
+    assert second_resp.get_json()["speech_stats"]["filler_totals"] == {
+        "voilà": 1,
+        "en fait": 1,
+    }
+
+
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.analyze_answer", return_value={
+    "transcription": "So um, I think uh this is right.",
+    "analysis_content": "OK",
+    "analysis_form": "OK",
+    "ideal_answer_text": "Ideal",
+    "ideal_plan_text": "Plan",
+})
+@patch(
+    "services.ai_service.transcribe_audio",
+    return_value=("So um, I think uh this is right.", []),
+)
+def test_analyze_answer_detects_english_filler_words(mock_transcribe, mock_analyze, mock_tts, client):
+    offer = _create_offer(client)
+    itw = _add_interview(client, offer["session_id"], language="en")
+
+    resp = client.post(
+        "/api/analyze-answer",
+        data={
+            "interview_id": itw["interview_id"],
+            "question_index": "0",
+            "duration_seconds": "30.0",
+            "recording_mode": "audio",
+            "audio": (BytesIO(FAKE_AUDIO), "recording.webm", "audio/webm"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["filler_word_count"] == {"um": 1, "uh": 1}
+
+
+@patch("services.ai_service.synthesize_speech", return_value=b"\x00" * 100)
+@patch("services.ai_service.analyze_answer", return_value={
     "transcription": "Ma réponse",
     "analysis_content": "Bon contenu",
     "analysis_form": "Bonne forme",

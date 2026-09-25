@@ -267,6 +267,34 @@ def test_analyze_speech_pacing_computes_sliding_window_wpm():
     assert segments[0]["wpm"] == 63.2
 
 
+def test_analyze_speech_pacing_ignores_leading_silence():
+    # Same shape as test_analyze_speech_pacing_computes_sliding_window_wpm,
+    # but the first word only starts at 5.0s (leading silence before speech
+    # begins). Windows must start at words[0]["start"], not 0.0 — otherwise
+    # the leading silence is counted as part of the window and artificially
+    # depresses the computed WPM.
+    words = [{"word": f"w{i}", "start": 5.0 + i, "end": 5.0 + i + 0.5} for i in range(10)]
+    result = ai_service.analyze_speech_pacing(words)
+    segments = result["pacing_segments"]
+    assert segments[0]["start_s"] == 5.0
+    assert segments[0]["end_s"] == 14.5
+    assert segments[0]["wpm"] == 63.2
+
+
+def test_analyze_speech_pacing_merges_short_trailing_window():
+    # Total duration (23.3s) doesn't align on a window/step boundary, so the
+    # naive sliding window would produce a final ~3.3s window with a spurious
+    # WPM. That trailing window must be folded into the previous one instead
+    # of reported on its own.
+    words = [{"word": f"w{i}", "start": i * 0.5, "end": i * 0.5 + 0.3} for i in range(47)]
+    result = ai_service.analyze_speech_pacing(words)
+    segments = result["pacing_segments"]
+    assert segments
+    for seg in segments:
+        assert seg["end_s"] - seg["start_s"] >= ai_service.PACING_MIN_WINDOW_SECONDS - 0.01
+    assert segments[-1]["end_s"] == 23.3
+
+
 def test_count_filler_words_french():
     result = ai_service.count_filler_words(
         "Alors euh, en fait, du coup, euh, je pense que voilà.", "fr"
@@ -339,6 +367,35 @@ def test_detect_tics_sorted_by_count_descending():
     tics = ai_service.detect_tics(transcriptions, "fr")
     counts = [t["count"] for t in tics]
     assert counts == sorted(counts, reverse=True)
+
+
+def test_detect_tics_dedupes_overlapping_ngrams_keeping_longest():
+    # "gestion de projet" repeats (count 2), which means its overlapping
+    # sub-phrases "gestion de" and "de projet" also reach count 2. Only the
+    # longest phrase sharing that count should be reported.
+    transcriptions = [
+        "J'ai fait de la gestion de projet.",
+        "Ensuite plus de gestion de projet.",
+    ]
+    tics = ai_service.detect_tics(transcriptions, "fr")
+    phrases = {t["phrase"]: t["count"] for t in tics}
+    assert phrases.get("gestion de projet") == 2
+    assert "gestion de" not in phrases
+    assert "de projet" not in phrases
+
+
+def test_detect_tics_caps_results_at_ten():
+    words = [
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+        "iota", "kappa", "lambda", "mu", "nu", "xi", "omicron",
+    ]
+    sentence = " ".join(words) + "."
+    tics = ai_service.detect_tics([sentence, sentence], "fr")
+    assert len(tics) == ai_service.TIC_MAX_RESULTS
+    assert all(t["count"] == 2 for t in tics)
+    # Every surviving entry should be a maximal (4-word) n-gram: shorter
+    # overlapping sub-phrases at the same count must have been deduped away.
+    assert all(len(t["phrase"].split(" ")) == 4 for t in tics)
 
 
 @patch.object(ai_service, "_call_llm")

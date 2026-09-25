@@ -977,6 +977,7 @@ async function jumpToSearchResult(result) {
         state.currentInterviewLanguage = data.language;
         state.questions = data.questions || [];
         state.feedbacks = data.feedbacks || {};
+        renderSpeechDashboard(data.speech_stats);
 
         selectQuestion(result.question_index);
     } catch (err) {
@@ -1322,6 +1323,7 @@ function renderSpeechDashboard(speechStats) {
     const empty = document.getElementById("speech-dashboard-empty");
     const content = document.getElementById("speech-dashboard-content");
     const ticsBody = document.getElementById("speech-dashboard-tics");
+    const fillers = document.getElementById("speech-dashboard-fillers");
     const advice = document.getElementById("speech-dashboard-advice");
 
     if (!speechStats) {
@@ -1331,19 +1333,34 @@ function renderSpeechDashboard(speechStats) {
     card.classList.remove("hidden");
 
     const tics = speechStats.tics || [];
-    if (tics.length === 0) {
+    const fillerTotals = speechStats.filler_totals || {};
+    if (tics.length === 0 && Object.keys(fillerTotals).length === 0) {
         empty.classList.remove("hidden");
         content.classList.add("hidden");
         return;
     }
     empty.classList.add("hidden");
     content.classList.remove("hidden");
-    ticsBody.innerHTML = tics
-        .map(
-            (t) =>
-                `<tr><td class="text-slate-600 pr-2">"${t.phrase}"</td><td class="text-slate-500">${t.count} occurrences</td></tr>`
-        )
-        .join("");
+
+    ticsBody.innerHTML = "";
+    tics.forEach((t) => {
+        const row = document.createElement("tr");
+        const phraseCell = document.createElement("td");
+        phraseCell.className = "text-slate-600 pr-2";
+        phraseCell.textContent = `"${t.phrase}"`;
+        const countCell = document.createElement("td");
+        countCell.className = "text-slate-500";
+        countCell.textContent = `${t.count} occurrences`;
+        row.appendChild(phraseCell);
+        row.appendChild(countCell);
+        ticsBody.appendChild(row);
+    });
+
+    const fillerText = Object.entries(fillerTotals)
+        .map(([word, count]) => `"${word}" (${count})`)
+        .join(", ");
+    fillers.textContent = fillerText || "Aucun détecté";
+
     advice.textContent = speechStats.advice || "";
 }
 

@@ -253,6 +253,7 @@ def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> tuple[
 
 PACING_WINDOW_SECONDS = 10.0
 PACING_STEP_SECONDS = 2.0
+PACING_MIN_WINDOW_SECONDS = 5.0
 HESITATION_SILENCE_MIN_S = 0.25
 HESITATION_SILENCE_MAX_S = 1.2
 HESITATION_MIN_PRIOR_SPEECH_S = 0.4
@@ -275,17 +276,44 @@ def analyze_speech_pacing(words: list[dict]) -> dict:
             "hesitation_timestamps": [],
         }
 
+    speech_start = words[0]["start"]
     total_end = words[-1]["end"]
-    pacing_segments = []
-    start = 0.0
-    while start < total_end:
-        end = start + PACING_WINDOW_SECONDS
-        window_end = min(end, total_end)
-        window_duration = window_end - start
-        count = sum(1 for w in words if start <= w["start"] < end)
-        wpm = round((count / window_duration) * 60.0, 1) if window_duration > 0 else 0.0
-        pacing_segments.append({"start_s": start, "end_s": window_end, "wpm": wpm})
-        start += PACING_STEP_SECONDS
+    total_duration = total_end - speech_start
+
+    pacing_segments: list[dict] = []
+    if total_duration <= 0:
+        pass
+    elif total_duration < PACING_WINDOW_SECONDS:
+        # Réponse trop courte pour un fenêtrage glissant : un seul segment
+        # sur toute la durée plutôt que des fenêtres de fin de quelques
+        # secondes au débit instable.
+        count = len(words)
+        wpm = round((count / total_duration) * 60.0, 1)
+        pacing_segments.append({"start_s": speech_start, "end_s": total_end, "wpm": wpm})
+    else:
+        start = speech_start
+        while start < total_end:
+            end = start + PACING_WINDOW_SECONDS
+            window_end = min(end, total_end)
+            window_duration = window_end - start
+            if window_duration < PACING_MIN_WINDOW_SECONDS and pacing_segments:
+                # Fenêtre de fin trop courte (la durée totale ne tombe pas
+                # pile sur une frontière de fenêtre) : on l'absorbe dans la
+                # précédente plutôt que de produire un WPM instable
+                # (pic artificiel ou chute à 0) sur quelques mots isolés.
+                previous = pacing_segments[-1]
+                merged_start = previous["start_s"]
+                merged_duration = window_end - merged_start
+                count = sum(1 for w in words if merged_start <= w["start"] < window_end)
+                previous["end_s"] = window_end
+                previous["wpm"] = (
+                    round((count / merged_duration) * 60.0, 1) if merged_duration > 0 else 0.0
+                )
+                break
+            count = sum(1 for w in words if start <= w["start"] < end)
+            wpm = round((count / window_duration) * 60.0, 1) if window_duration > 0 else 0.0
+            pacing_segments.append({"start_s": start, "end_s": window_end, "wpm": wpm})
+            start += PACING_STEP_SECONDS
 
     hesitation_count = 0
     hesitation_timestamps = []
@@ -345,6 +373,7 @@ def merge_filler_counts(counts_list: list[dict[str, int]]) -> dict[str, int]:
 TIC_NGRAM_MIN_LENGTH = 2
 TIC_NGRAM_MAX_LENGTH = 4
 TIC_MIN_OCCURRENCES = 2
+TIC_MAX_RESULTS = 10
 
 STOPWORDS = {
     "fr": {
@@ -375,7 +404,10 @@ def detect_tics(transcriptions: list[str], language: str) -> list[dict]:
     Returns:
         Liste `{phrase, count}` pour les n-grammes (2 à 4 mots) apparaissant
         au moins `TIC_MIN_OCCURRENCES` fois et non composés uniquement de
-        mots vides, triée par occurrences décroissantes.
+        mots vides, triée par occurrences décroissantes. Les n-grammes
+        redondants (sous-chaîne d'un n-gramme plus long partageant le même
+        nombre d'occurrences) sont écartés au profit du plus long, et le
+        résultat est limité aux `TIC_MAX_RESULTS` tics les plus fréquents.
     """
     stopwords = STOPWORDS.get(language, STOPWORDS["fr"])
     counts: dict[str, int] = {}
@@ -389,13 +421,37 @@ def detect_tics(transcriptions: list[str], language: str) -> list[dict]:
                 phrase = " ".join(ngram_tokens)
                 counts[phrase] = counts.get(phrase, 0) + 1
 
-    tics = [
+    candidates = [
         {"phrase": phrase, "count": count}
         for phrase, count in counts.items()
         if count >= TIC_MIN_OCCURRENCES
     ]
-    tics.sort(key=lambda t: t["count"], reverse=True)
-    return tics
+    # Longest phrase first among ties on count, so the longest overlapping
+    # n-gram is kept and its redundant sub-phrases are dropped below.
+    candidates.sort(key=lambda t: (-t["count"], -len(t["phrase"].split(" "))))
+
+    deduped: list[dict] = []
+    for candidate in candidates:
+        candidate_tokens = candidate["phrase"].split(" ")
+        redundant = False
+        for kept in deduped:
+            if kept["count"] != candidate["count"]:
+                continue
+            kept_tokens = kept["phrase"].split(" ")
+            if len(candidate_tokens) >= len(kept_tokens):
+                continue
+            span = len(candidate_tokens)
+            if any(
+                kept_tokens[start:start + span] == candidate_tokens
+                for start in range(len(kept_tokens) - span + 1)
+            ):
+                redundant = True
+                break
+        if not redundant:
+            deduped.append(candidate)
+
+    deduped.sort(key=lambda t: t["count"], reverse=True)
+    return deduped[:TIC_MAX_RESULTS]
 
 
 def analyze_answer(
