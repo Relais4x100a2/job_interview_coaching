@@ -837,6 +837,7 @@ async function loadInterview(interviewId) {
         state.questions = data.questions || [];
         state.feedbacks = data.feedbacks || {};
         state.currentQuestionIndex = null;
+        renderSpeechDashboard(data.speech_stats);
 
         renderQuestions();
         showView("questions");
@@ -1303,6 +1304,7 @@ async function sendMedia(audioBlob, durationSeconds, frames, videoBlob) {
         }
 
         state.feedbacks[state.currentQuestionIndex] = data;
+        renderSpeechDashboard(data.speech_stats);
         showConsultationMode(data);
     } catch (err) {
         document.getElementById("analysis-loading").classList.add("hidden");
@@ -1313,6 +1315,36 @@ async function sendMedia(audioBlob, durationSeconds, frames, videoBlob) {
         setNavigationLocked(false);
         stopAnalysisProgress();
     }
+}
+
+function renderSpeechDashboard(speechStats) {
+    const card = document.getElementById("speech-dashboard");
+    const empty = document.getElementById("speech-dashboard-empty");
+    const content = document.getElementById("speech-dashboard-content");
+    const ticsBody = document.getElementById("speech-dashboard-tics");
+    const advice = document.getElementById("speech-dashboard-advice");
+
+    if (!speechStats) {
+        card.classList.add("hidden");
+        return;
+    }
+    card.classList.remove("hidden");
+
+    const tics = speechStats.tics || [];
+    if (tics.length === 0) {
+        empty.classList.remove("hidden");
+        content.classList.add("hidden");
+        return;
+    }
+    empty.classList.add("hidden");
+    content.classList.remove("hidden");
+    ticsBody.innerHTML = tics
+        .map(
+            (t) =>
+                `<tr><td class="text-slate-600 pr-2">"${t.phrase}"</td><td class="text-slate-500">${t.count} occurrences</td></tr>`
+        )
+        .join("");
+    advice.textContent = speechStats.advice || "";
 }
 
 function displayFeedback(data) {

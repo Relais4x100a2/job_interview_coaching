@@ -220,6 +220,18 @@
                 ← Retour aux entretiens
             </button>
             <h2 class="text-xl font-semibold text-slate-700">Choisissez une question</h2>
+            <div id="speech-dashboard" class="hidden bg-white rounded-xl shadow-md p-4 mb-4">
+                <h3 class="font-semibold text-slate-700 mb-2">Tendances d'élocution</h3>
+                <p id="speech-dashboard-empty" class="hidden text-sm text-slate-500">
+                    Pas encore assez de matière pour dégager des tendances.
+                </p>
+                <div id="speech-dashboard-content" class="hidden space-y-3">
+                    <table class="text-sm w-full">
+                        <tbody id="speech-dashboard-tics"></tbody>
+                    </table>
+                    <p id="speech-dashboard-advice" class="text-sm text-indigo-700"></p>
+                </div>
+            </div>
             <div id="questions-grid" class="grid gap-3 sm:grid-cols-2"></div>
             <div class="flex gap-4 pt-2">
                 <a id="export-plans-link" href="#" download
