@@ -1460,7 +1460,6 @@ async function saveValidated() {
 function updateRecordingReferencePanel(index) {
     const panel = document.getElementById("recording-reference-panel");
     const content = document.getElementById("recording-reference-content");
-    const toggle = document.getElementById("recording-reference-toggle");
     const feedback = getFeedback(index);
     const plan = feedback ? feedback.validated_plan_text : "";
     const answer = feedback ? feedback.validated_answer_text : "";
@@ -1472,17 +1471,8 @@ function updateRecordingReferencePanel(index) {
 
     document.getElementById("recording-reference-plan").textContent = plan || "";
     document.getElementById("recording-reference-answer").textContent = answer || "";
-    content.classList.add("hidden");
-    toggle.textContent = "Afficher mes notes validées";
+    content.classList.remove("hidden");
     panel.classList.remove("hidden");
-}
-
-function toggleRecordingReferencePanel() {
-    const content = document.getElementById("recording-reference-content");
-    const toggle = document.getElementById("recording-reference-toggle");
-    const isHidden = content.classList.contains("hidden");
-    content.classList.toggle("hidden", !isHidden);
-    toggle.textContent = isHidden ? "Masquer mes notes validées" : "Afficher mes notes validées";
 }
 
 document.getElementById("btn-create-offer").addEventListener("click", createOffer);
@@ -1517,10 +1507,6 @@ document.getElementById("breadcrumb").addEventListener("click", (e) => {
 });
 
 document.getElementById("btn-save-validated").addEventListener("click", saveValidated);
-document.getElementById("recording-reference-toggle").addEventListener("click", (e) => {
-    e.preventDefault();
-    toggleRecordingReferencePanel();
-});
 ["validated-plan-input", "validated-answer-input"].forEach((id) => {
     document.getElementById(id).addEventListener("input", () => {
         state.validatedDirty = true;
