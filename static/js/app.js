@@ -1319,6 +1319,38 @@ function displayFeedback(data) {
     document.getElementById("feedback-transcription").textContent = data.transcription;
     document.getElementById("feedback-content").innerHTML = marked.parse(data.analysis_content || "");
     document.getElementById("feedback-form").innerHTML = marked.parse(data.analysis_form || "");
+
+    const sparklineContainer = document.getElementById("pacing-sparkline");
+    const statsTable = document.getElementById("speech-stats-table");
+    const segments = data.pacing_segments || [];
+    if (segments.length > 0) {
+        const width = 300;
+        const height = 60;
+        const maxWpm = Math.max(...segments.map((s) => s.wpm), 1);
+        const points = segments
+            .map((s, i) => {
+                const x = (i / (segments.length - 1 || 1)) * width;
+                const y = height - (s.wpm / maxWpm) * height;
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            })
+            .join(" ");
+        sparklineContainer.innerHTML = `
+            <svg viewBox="0 0 ${width} ${height}" class="w-full h-16">
+                <polyline points="${points}" fill="none" stroke="#6366f1" stroke-width="2" />
+            </svg>
+        `;
+        statsTable.classList.remove("hidden");
+        document.getElementById("speech-stats-hesitations").textContent = data.hesitation_count ?? 0;
+        const fillerCount = data.filler_word_count || {};
+        const fillerText = Object.entries(fillerCount)
+            .map(([word, count]) => `${word} (${count})`)
+            .join(", ");
+        document.getElementById("speech-stats-fillers").textContent = fillerText || "Aucun détecté";
+    } else {
+        sparklineContainer.innerHTML = "";
+        statsTable.classList.add("hidden");
+    }
+
     document.getElementById("feedback-ideal").textContent = data.ideal_answer_text;
     document.getElementById("feedback-plan").textContent = data.ideal_plan_text || "";
     document.getElementById("validated-plan-input").value = data.validated_plan_text ?? "";
